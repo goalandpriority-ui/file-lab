@@ -4,10 +4,6 @@ export async function POST() {
 
   const apiKey = process.env.CLOUDCONVERT_API_KEY
 
-  if (!apiKey) {
-    return NextResponse.json({ error: "Missing API key" }, { status: 500 })
-  }
-
   try {
     const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
       method: "POST",
@@ -17,18 +13,18 @@ export async function POST() {
       },
       body: JSON.stringify({
         tasks: {
-          upload: {
+          "import-my-file": {
             operation: "import/upload"
           },
-          convert: {
+          "convert-my-file": {
             operation: "convert",
-            input: "upload",
+            input: "import-my-file",
             input_format: "pdf",
             output_format: "docx"
           },
-          export: {
+          "export-my-file": {
             operation: "export/url",
-            input: "convert"
+            input: "convert-my-file"
           }
         }
       })
@@ -36,13 +32,21 @@ export async function POST() {
 
     const jobData = await jobRes.json()
 
+    // 🔥 DEBUG RETURN
     if (!jobData?.data) {
       return NextResponse.json({ error: jobData }, { status: 500 })
     }
 
     const uploadTask = jobData.data.tasks.find(
-      (t) => t.name === "upload"
+      (t) => t.name === "import-my-file"
     )
+
+    if (!uploadTask) {
+      return NextResponse.json({
+        error: "Upload task not found",
+        full: jobData
+      }, { status: 500 })
+    }
 
     return NextResponse.json({
       uploadUrl: uploadTask.result.form.url,
