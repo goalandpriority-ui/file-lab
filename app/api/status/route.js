@@ -6,22 +6,36 @@ export async function GET(req) {
 
   const apiKey = process.env.CLOUDCONVERT_API_KEY
 
-  const res = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`
-    }
-  })
-
-  const data = await res.json()
-
-  const exportTask = data.data.tasks.find(t => t.name === "export")
-
-  if (exportTask && exportTask.status === "finished") {
-    return NextResponse.json({
-      done: true,
-      url: exportTask.result.files[0].url
-    })
+  if (!jobId) {
+    return NextResponse.json({ error: "Missing jobId" }, { status: 400 })
   }
 
-  return NextResponse.json({ done: false })
+  try {
+    const res = await fetch(
+      `https://api.cloudconvert.com/v2/jobs/${jobId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`
+        }
+      }
+    )
+
+    const data = await res.json()
+
+    const exportTask = data.data.tasks.find(
+      (t) => t.name === "export"
+    )
+
+    if (exportTask && exportTask.status === "finished") {
+      return NextResponse.json({
+        done: true,
+        url: exportTask.result.files[0].url
+      })
+    }
+
+    return NextResponse.json({ done: false })
+
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
