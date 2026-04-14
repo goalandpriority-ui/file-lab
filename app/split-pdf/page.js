@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { PDFDocument } from "pdf-lib"
 import JSZip from "jszip"
 import * as pdfjsLib from "pdfjs-dist"
+import { supabase } from "@/lib/supabase"
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js"
@@ -24,7 +25,6 @@ export default function Page() {
 
     const bytes = await f.arrayBuffer()
 
-    // pdf-lib
     const pdf = await PDFDocument.load(bytes)
     const total = pdf.getPageCount()
     const pageArr = Array.from({ length: total }, (_, i) => i)
@@ -32,7 +32,6 @@ export default function Page() {
     setPages(pageArr)
     setSelected(pageArr)
 
-    // pdf.js for thumbnails
     const pdfjs = await pdfjsLib.getDocument({ data: bytes }).promise
 
     const imgs = []
@@ -67,7 +66,7 @@ export default function Page() {
     }
   }
 
-  // 🔥 DRAG REORDER
+  // 🔥 REORDER
   const move = (i, dir) => {
     const arr = [...pages]
     const target = i + dir
@@ -77,9 +76,18 @@ export default function Page() {
     setPages(arr)
   }
 
-  // 🔥 SPLIT MULTI ZIP
+  // 🔥 SPLIT
   const handleSplit = async () => {
     if (!file) return alert("Upload PDF")
+
+    // 🔥 LOGIN CHECK
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
 
     setLoading(true)
 
@@ -95,18 +103,27 @@ export default function Page() {
         newPdf.addPage(page)
 
         const bytes = await newPdf.save()
-
         zip.file(`page-${i+1}.pdf`, bytes)
       }
 
       const zipBlob = await zip.generateAsync({ type: "blob" })
-
       const url = URL.createObjectURL(zipBlob)
 
+      // 🔥 DOWNLOAD
       const a = document.createElement("a")
       a.href = url
       a.download = "split.zip"
       a.click()
+
+      // 🔥 SAVE TO DATABASE
+      await supabase.from("files").insert([
+        {
+          user_id: userData.user.id,
+          name: "split.zip",
+          type: "split-pdf",
+          file_url: url
+        }
+      ])
 
       URL.revokeObjectURL(url)
 
@@ -152,6 +169,8 @@ export default function Page() {
   )
 }
 
+// 🔥 STYLES
+
 const layout = {
   display:"flex",
   flexDirection:"column",
@@ -179,4 +198,4 @@ const btn = {
   background:"#22c55e",
   border:"none",
   borderRadius:"8px"
-  }
+}
