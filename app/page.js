@@ -1,22 +1,45 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { supabase } from "@/lib/supabase"
 
 export default function Home() {
 
   const [dark, setDark] = useState(true)
+  const [user, setUser] = useState(null)
+
+  // 🔥 GET USER
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user)
+    })
+  }, [])
 
   return (
     <main style={dark ? mainDark : mainLight}>
 
       {/* 🔥 TOP BAR */}
       <div style={topBar}>
+
+        {/* 🔥 LOGIN / PROFILE */}
+        {user ? (
+          <a href="/history" style={profileBtn}>
+            {user.email}
+          </a>
+        ) : (
+          <a href="/login" style={profileBtn}>
+            Login
+          </a>
+        )}
+
+        {/* 🌙 TOGGLE */}
         <button 
           onClick={()=>setDark(!dark)} 
           style={toggleBtn}
         >
           {dark ? "☀️" : "🌙"}
         </button>
+
       </div>
 
       {/* 🔥 HERO */}
@@ -26,7 +49,7 @@ export default function Home() {
       </div>
 
       {/* 🔥 CONVERT */}
-      <Section title="Convert 🔄">
+      <Section title="⚡ Convert">
         <Btn href="/pdf-to-word">📄 PDF → Word</Btn>
         <Btn href="/word-to-pdf">📝 Word → PDF</Btn>
         <Btn href="/pdf-to-jpg">🖼️ PDF → JPG</Btn>
@@ -34,18 +57,23 @@ export default function Home() {
       </Section>
 
       {/* 🔥 COMPRESS */}
-      <Section title="Compress ⚡">
+      <Section title="📦 Compress">
         <Btn href="/compress-pdf">📦 Compress PDF</Btn>
         <Btn href="/image-compress">🗜️ Image Compress</Btn>
       </Section>
 
       {/* 🔥 EDIT */}
-      <Section title="Edit ✏️">
+      <Section title="✏️ Edit">
         <Btn href="/merge-pdf">📚 Merge PDF</Btn>
         <Btn href="/split-pdf">✂️ Split PDF</Btn>
         <Btn href="/pdf-editor">🧾 PDF Editor</Btn>
         <Btn href="/word-editor">📝 Word Editor</Btn>
       </Section>
+
+      {/* 🔥 FOOTER */}
+      <div style={footer}>
+        <p>© 2026 FileLab</p>
+      </div>
 
     </main>
   )
@@ -62,6 +90,8 @@ function Btn({ href, children }) {
       onMouseUp={()=>setPressed(false)}
       onTouchStart={()=>setPressed(true)}
       onTouchEnd={()=>setPressed(false)}
+      onMouseEnter={(e)=>e.target.style.opacity=0.8}
+      onMouseLeave={(e)=>e.target.style.opacity=1}
       style={{
         ...btn,
         transform: pressed ? "scale(0.95)" : "scale(1)"
@@ -106,13 +136,14 @@ const mainLight = {
   color: "#000"
 }
 
-// 🔥 TOP BAR (RIGHT SIDE ONLY)
+// 🔥 TOP BAR
 const topBar = {
   width: "100%",
   maxWidth: "420px",
   display: "flex",
-  justifyContent: "flex-end",
-  marginTop: "10px"
+  justifyContent: "space-between",
+  marginTop: "10px",
+  alignItems: "center"
 }
 
 const toggleBtn = {
@@ -124,7 +155,16 @@ const toggleBtn = {
   fontSize: "16px"
 }
 
-// 🔥 HERO (CENTER PERFECT)
+const profileBtn = {
+  padding: "8px 12px",
+  borderRadius: "10px",
+  background: "#111",
+  color: "#fff",
+  textDecoration: "none",
+  fontSize: "12px"
+}
+
+// 🔥 HERO
 const hero = {
   textAlign: "center",
   marginTop: "20px",
@@ -163,7 +203,7 @@ const grid = {
   gap: "14px"
 }
 
-// 🔥 BUTTON (APPLE STYLE)
+// 🔥 BUTTON
 const btn = {
   padding: "18px",
   borderRadius: "18px",
@@ -176,3 +216,10 @@ const btn = {
   boxShadow: "0 8px 25px rgba(34,197,94,0.25)",
   transition: "all 0.15s ease"
 }
+
+// 🔥 FOOTER
+const footer = {
+  marginTop: "40px",
+  opacity: 0.4,
+  fontSize: "12px"
+  }
