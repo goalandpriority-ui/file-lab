@@ -1,10 +1,41 @@
 import { NextResponse } from "next/server"
 
-export async function POST() {
+export async function POST(req) {
 
   const apiKey = process.env.CLOUDCONVERT_API_KEY
 
   try {
+
+    // 🔥 GET TYPE FROM URL
+    const { searchParams } = new URL(req.url)
+    const type = searchParams.get("type") || "pdf-to-word"
+
+    // 🔥 DEFAULT (PDF → WORD)
+    let inputFormat = "pdf"
+    let outputFormat = "docx"
+
+    // 🔥 OTHER TOOLS
+    if (type === "pdf-to-jpg") {
+      inputFormat = "pdf"
+      outputFormat = "jpg"
+    }
+
+    if (type === "jpg-to-pdf") {
+      inputFormat = "jpg"
+      outputFormat = "pdf"
+    }
+
+    if (type === "png-to-pdf") {
+      inputFormat = "png"
+      outputFormat = "pdf"
+    }
+
+    if (type === "pdf-to-png") {
+      inputFormat = "pdf"
+      outputFormat = "png"
+    }
+
+    // 🔥 CREATE JOB
     const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
       method: "POST",
       headers: {
@@ -19,8 +50,8 @@ export async function POST() {
           "convert-my-file": {
             operation: "convert",
             input: "import-my-file",
-            input_format: "pdf",
-            output_format: "docx"
+            input_format: inputFormat,
+            output_format: outputFormat
           },
           "export-my-file": {
             operation: "export/url",
