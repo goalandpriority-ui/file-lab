@@ -1,112 +1,182 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { PDFDocument } from "pdf-lib"
+import JSZip from "jszip"
+import * as pdfjsLib from "pdfjs-dist"
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js"
 
 export default function Page() {
   const [file, setFile] = useState(null)
-  const [pages, setPages] = useState("1-2")
+  const [pages, setPages] = useState([])
+  const [selected, setSelected] = useState([])
+  const [images, setImages] = useState([])
   const [loading, setLoading] = useState(false)
-  const [downloadUrl, setDownloadUrl] = useState("")
-  const [status, setStatus] = useState("")
 
-  const handleSplit = async () => {
-    if (!file) return alert("Select PDF")
+  // 🔥 LOAD + THUMBNAIL
+  const handleFile = async (e) => {
+    const f = e.target.files[0]
+    if (!f) return
 
-    setLoading(true)
-    setDownloadUrl("")
-    setStatus("Preparing...")
+    setFile(f)
 
-    try {
-      // 🔥 Create job
-      const res = await fetch(`/api/split?pages=${pages}`, {
-        method: "POST"
-      })
+    const bytes = await f.arrayBuffer()
 
-      const { uploadUrl, uploadParams, jobId } = await res.json()
+    // pdf-lib
+    const pdf = await PDFDocument.load(bytes)
+    const total = pdf.getPageCount()
+    const pageArr = Array.from({ length: total }, (_, i) => i)
 
-      setStatus("Uploading...")
+    setPages(pageArr)
+    setSelected(pageArr)
 
-      const uploadForm = new FormData()
-      Object.keys(uploadParams).forEach((key) => {
-        uploadForm.append(key, uploadParams[key])
-      })
+    // pdf.js for thumbnails
+    const pdfjs = await pdfjsLib.getDocument({ data: bytes }).promise
 
-      uploadForm.append("file", file)
+    const imgs = []
 
-      await fetch(uploadUrl, {
-        method: "POST",
-        body: uploadForm
-      })
+    for (let i = 1; i <= pdfjs.numPages; i++) {
+      const page = await pdfjs.getPage(i)
+      const viewport = page.getViewport({ scale: 0.5 })
 
-      setStatus("Splitting...")
+      const canvas = document.createElement("canvas")
+      const context = canvas.getContext("2d")
 
-      // 🔥 Poll status
-      const interval = setInterval(async () => {
-        const res = await fetch(`/api/status?jobId=${jobId}`)
-        const data = await res.json()
+      canvas.width = viewport.width
+      canvas.height = viewport.height
 
-        if (data.done) {
-          clearInterval(interval)
-          setLoading(false)
-          setDownloadUrl(data.url)
-          setStatus("Done ✅")
-        }
-      }, 2000)
+      await page.render({
+        canvasContext: context,
+        viewport
+      }).promise
 
-    } catch (err) {
-      setLoading(false)
-      setStatus("Error ❌")
-      alert("Split failed")
+      imgs.push(canvas.toDataURL())
+    }
+
+    setImages(imgs)
+  }
+
+  // 🔥 TOGGLE
+  const togglePage = (index) => {
+    if (selected.includes(index)) {
+      setSelected(selected.filter(p => p !== index))
+    } else {
+      setSelected([...selected, index])
     }
   }
 
+  // 🔥 DRAG REORDER
+  const move = (i, dir) => {
+    const arr = [...pages]
+    const target = i + dir
+    if (target < 0 || target >= arr.length) return
+
+    ;[arr[i], arr[target]] = [arr[target], arr[i]]
+    setPages(arr)
+  }
+
+  // 🔥 SPLIT MULTI ZIP
+  const handleSplit = async () => {
+    if (!file) return alert("Upload PDF")
+
+    setLoading(true)
+
+    try {
+      const bytes = await file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes)
+
+      const zip = new JSZip()
+
+      for (let i of selected) {
+        const newPdf = await PDFDocument.create()
+        const [page] = await newPdf.copyPages(pdf, [i])
+        newPdf.addPage(page)
+
+        const bytes = await newPdf.save()
+
+        zip.file(`page-${i+1}.pdf`, bytes)
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" })
+
+      const url = URL.createObjectURL(zipBlob)
+
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "split.zip"
+      a.click()
+
+      URL.revokeObjectURL(url)
+
+    } catch (err) {
+      console.error(err)
+      alert("Error ❌")
+    }
+
+    setLoading(false)
+  }
+
   return (
-    <main style={{
-      display:"flex",
-      flexDirection:"column",
-      alignItems:"center",
-      justifyContent:"center",
-      height:"100vh",
-      gap:"20px",
-      background:"#020617",
-      color:"#fff"
-    }}>
+    <main style={layout}>
+      <h1>Split PDF 🔥 (Ultra Pro)</h1>
 
-      <h1>Split PDF</h1>
+      <input type="file" accept="application/pdf" onChange={handleFile} />
 
-      <input 
-        type="file"
-        accept="application/pdf"
-        onChange={(e)=>setFile(e.target.files[0])}
-      />
+      <div style={grid}>
+        {pages.map((p, idx) => (
+          <div key={p} style={box}>
+            
+            <img src={images[p]} style={{width:"100%"}} />
 
-      <input 
-        placeholder="Enter pages (e.g. 1-2 or 3-5)"
-        value={pages}
-        onChange={(e)=>setPages(e.target.value)}
-        style={{padding:"10px", borderRadius:"8px"}}
-      />
+            <p>Page {p+1}</p>
 
-      <button 
-        onClick={handleSplit}
-        disabled={loading}
-        style={{
-          padding:"10px 20px",
-          background: loading ? "#555" : "#22c55e",
-          border:"none",
-          borderRadius:"8px",
-          color:"#000"
-        }}
-      >
-        {loading ? status : "Split"}
+            <button onClick={()=>togglePage(p)}>
+              {selected.includes(p) ? "Selected" : "Select"}
+            </button>
+
+            <div>
+              <button onClick={()=>move(idx,-1)}>⬆️</button>
+              <button onClick={()=>move(idx,1)}>⬇️</button>
+            </div>
+
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handleSplit} style={btn}>
+        {loading ? "Processing..." : "Download ZIP 🔥"}
       </button>
-
-      {downloadUrl && (
-        <a href={downloadUrl} target="_blank">
-          Download Split PDF 🔥
-        </a>
-      )}
-
     </main>
   )
-          }
+}
+
+const layout = {
+  display:"flex",
+  flexDirection:"column",
+  alignItems:"center",
+  gap:"20px",
+  background:"#020617",
+  color:"#fff",
+  padding:"20px"
+}
+
+const grid = {
+  display:"grid",
+  gridTemplateColumns:"repeat(2,1fr)",
+  gap:"10px"
+}
+
+const box = {
+  padding:"10px",
+  background:"#111",
+  borderRadius:"8px"
+}
+
+const btn = {
+  padding:"12px",
+  background:"#22c55e",
+  border:"none",
+  borderRadius:"8px"
+  }
