@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
+import { supabase } from "@/lib/supabase"
 
 export default function Page() {
   const [files, setFiles] = useState([])
@@ -36,6 +37,15 @@ export default function Page() {
   // 🔥 MERGE
   const handleMerge = async () => {
     if (!files.length) return alert("Select PDFs")
+
+    // 🔥 LOGIN CHECK
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
 
     setLoading(true)
 
@@ -79,10 +89,21 @@ export default function Page() {
       const blob = new Blob([mergedBytes], { type: "application/pdf" })
       const url = URL.createObjectURL(blob)
 
+      // 🔥 DOWNLOAD
       const a = document.createElement("a")
       a.href = url
       a.download = "merged.pdf"
       a.click()
+
+      // 🔥 SAVE TO DATABASE
+      await supabase.from("files").insert([
+        {
+          user_id: userData.user.id,
+          name: "merged.pdf",
+          type: "merge-pdf",
+          file_url: url
+        }
+      ])
 
       URL.revokeObjectURL(url)
 
@@ -140,6 +161,8 @@ export default function Page() {
   )
 }
 
+// 🔥 STYLES
+
 const layout = {
   display:"flex",
   flexDirection:"column",
@@ -169,4 +192,4 @@ const fileBox = {
   marginBottom:"5px",
   background:"#111",
   borderRadius:"6px"
-        }
+}
