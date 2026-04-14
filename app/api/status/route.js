@@ -6,10 +6,6 @@ export async function GET(req) {
 
   const apiKey = process.env.CLOUDCONVERT_API_KEY
 
-  if (!jobId) {
-    return NextResponse.json({ error: "Missing jobId" }, { status: 400 })
-  }
-
   try {
     const res = await fetch(
       `https://api.cloudconvert.com/v2/jobs/${jobId}`,
@@ -23,7 +19,7 @@ export async function GET(req) {
     const data = await res.json()
 
     const exportTask = data.data.tasks.find(
-      (t) => t.name === "export"
+      (t) => t.name === "export-my-file"
     )
 
     if (exportTask && exportTask.status === "finished") {
