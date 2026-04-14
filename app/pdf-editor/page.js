@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 import Draggable from "react-draggable"
+import { supabase } from "@/lib/supabase"
 
 export default function Page() {
   const [file, setFile] = useState(null)
@@ -83,9 +84,18 @@ export default function Page() {
     ctx.fill()
   }
 
-  // 🔥 DOWNLOAD
+  // 🔥 DOWNLOAD + SAVE
   const handleDownload = async () => {
     if (!file) return
+
+    // 🔥 LOGIN CHECK
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
 
     const bytes = await file.arrayBuffer()
     const pdf = await PDFDocument.load(bytes)
@@ -118,10 +128,21 @@ export default function Page() {
     const blob = new Blob([pdfBytes], { type: "application/pdf" })
     const url = URL.createObjectURL(blob)
 
+    // 🔥 DOWNLOAD
     const a = document.createElement("a")
     a.href = url
     a.download = "edited.pdf"
     a.click()
+
+    // 🔥 SAVE TO DB
+    await supabase.from("files").insert([
+      {
+        user_id: userData.user.id,
+        name: "edited.pdf",
+        type: "pdf-editor",
+        file_url: url
+      }
+    ])
   }
 
   return (
@@ -146,7 +167,6 @@ export default function Page() {
         <div style={{position:"relative"}}>
           <iframe src={pdfUrl + "#page=" + (pageIndex+1)} width="500" height="600" />
 
-          {/* DRAW CANVAS */}
           <canvas
             ref={canvasRef}
             width={500}
@@ -155,7 +175,6 @@ export default function Page() {
             style={{position:"absolute", top:0, left:0}}
           />
 
-          {/* TEXT */}
           {texts
             .filter(t=>t.page===pageIndex)
             .map((t, i) => (
@@ -184,7 +203,6 @@ export default function Page() {
             </Draggable>
           ))}
 
-          {/* SIGN */}
           {sign && (
             <img src={sign} style={{
               position:"absolute",
@@ -203,6 +221,8 @@ export default function Page() {
   )
 }
 
+// 🔥 STYLES
+
 const layout = {
   display:"flex",
   flexDirection:"column",
@@ -219,4 +239,4 @@ const btn = {
   background:"#22c55e",
   border:"none",
   borderRadius:"8px"
-        }
+              }
