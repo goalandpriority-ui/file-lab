@@ -1,0 +1,7 @@
+export const metadata = {
+  title: "FileLab",
+  description: "All-in-One PDF & Image Tools",
+  icons: {
+    icon: "/favicon.ico"
+  }
+}
