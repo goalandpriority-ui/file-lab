@@ -13,6 +13,7 @@ export async function POST(req) {
     // 🔥 DEFAULT (PDF → WORD)
     let inputFormat = "pdf"
     let outputFormat = "docx"
+    let extraOptions = {}
 
     // 🔥 OTHER TOOLS
     if (type === "pdf-to-jpg") {
@@ -35,6 +36,31 @@ export async function POST(req) {
       outputFormat = "png"
     }
 
+    // 🔥 WORD → PDF
+    if (type === "word-to-pdf") {
+      inputFormat = "docx"
+      outputFormat = "pdf"
+    }
+
+    // 🔥 COMPRESS PDF
+    if (type === "compress-pdf") {
+      inputFormat = "pdf"
+      outputFormat = "pdf"
+      extraOptions = {
+        engine: "qpdf",
+        optimize_print: true
+      }
+    }
+
+    // 🔥 IMAGE COMPRESS
+    if (type === "image-compress") {
+      inputFormat = "jpg"
+      outputFormat = "jpg"
+      extraOptions = {
+        quality: 60
+      }
+    }
+
     // 🔥 CREATE JOB
     const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
       method: "POST",
@@ -51,7 +77,8 @@ export async function POST(req) {
             operation: "convert",
             input: "import-my-file",
             input_format: inputFormat,
-            output_format: outputFormat
+            output_format: outputFormat,
+            ...extraOptions
           },
           "export-my-file": {
             operation: "export/url",
