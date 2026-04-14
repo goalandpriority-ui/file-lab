@@ -1,109 +1,172 @@
 "use client"
 
 import { useState } from "react"
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 
 export default function Page() {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
-  const [downloadUrl, setDownloadUrl] = useState("")
-  const [status, setStatus] = useState("")
+  const [addPageNumbers, setAddPageNumbers] = useState(false)
 
-  const handleConvert = async () => {
-    if (files.length < 2) return alert("Select at least 2 PDFs")
+  // 🔥 ADD FILES
+  const handleFiles = (e) => {
+    setFiles([...files, ...Array.from(e.target.files)])
+  }
+
+  // 🔥 REMOVE FILE
+  const removeFile = (index) => {
+    const updated = [...files]
+    updated.splice(index, 1)
+    setFiles(updated)
+  }
+
+  // 🔥 MOVE (REORDER)
+  const moveFile = (index, dir) => {
+    const updated = [...files]
+    const target = index + dir
+    if (target < 0 || target >= files.length) return
+
+    const temp = updated[index]
+    updated[index] = updated[target]
+    updated[target] = temp
+
+    setFiles(updated)
+  }
+
+  // 🔥 MERGE
+  const handleMerge = async () => {
+    if (!files.length) return alert("Select PDFs")
 
     setLoading(true)
-    setDownloadUrl("")
-    setStatus("Preparing...")
 
     try {
-      // 🔥 Create job
-      const res = await fetch("/api/merge", {
-        method: "POST"
-      })
+      const mergedPdf = await PDFDocument.create()
+      const font = await mergedPdf.embedFont(StandardFonts.Helvetica)
 
-      const { uploadUrl, uploadParams, jobId } = await res.json()
+      let pageCount = 1
 
-      setStatus("Uploading files...")
-
-      // 🔥 Upload all files
       for (let file of files) {
-        const uploadForm = new FormData()
+        const bytes = await file.arrayBuffer()
+        const pdf = await PDFDocument.load(bytes)
 
-        Object.keys(uploadParams).forEach((key) => {
-          uploadForm.append(key, uploadParams[key])
-        })
+        const pages = await mergedPdf.copyPages(
+          pdf,
+          pdf.getPageIndices()
+        )
 
-        uploadForm.append("file", file)
+        pages.forEach((page) => {
 
-        await fetch(uploadUrl, {
-          method: "POST",
-          body: uploadForm
+          // 🔥 ADD PAGE NUMBER
+          if (addPageNumbers) {
+            const { width, height } = page.getSize()
+
+            page.drawText(`${pageCount}`, {
+              x: width - 40,
+              y: 20,
+              size: 10,
+              font,
+              color: rgb(0, 0, 0)
+            })
+          }
+
+          mergedPdf.addPage(page)
+          pageCount++
         })
       }
 
-      setStatus("Merging PDFs...")
+      const mergedBytes = await mergedPdf.save()
 
-      // 🔥 Poll status
-      const interval = setInterval(async () => {
-        const res = await fetch(`/api/status?jobId=${jobId}`)
-        const data = await res.json()
+      const blob = new Blob([mergedBytes], { type: "application/pdf" })
+      const url = URL.createObjectURL(blob)
 
-        if (data.done) {
-          clearInterval(interval)
-          setLoading(false)
-          setDownloadUrl(data.url)
-          setStatus("Done ✅")
-        }
-      }, 2000)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "merged.pdf"
+      a.click()
+
+      URL.revokeObjectURL(url)
 
     } catch (err) {
-      setLoading(false)
-      setStatus("Error ❌")
-      alert("Merge failed")
+      console.error(err)
+      alert("Error ❌")
     }
+
+    setLoading(false)
   }
 
   return (
-    <main style={{
-      display:"flex",
-      flexDirection:"column",
-      alignItems:"center",
-      justifyContent:"center",
-      height:"100vh",
-      gap:"20px",
-      background:"#020617",
-      color:"#fff"
-    }}>
+    <main style={layout}>
+      <h1>Merge PDF 🔥 (Pro)</h1>
 
-      <h1>Merge PDF</h1>
-
-      <input 
+      <input
         type="file"
         multiple
         accept="application/pdf"
-        onChange={(e)=>setFiles([...e.target.files])}
+        onChange={handleFiles}
       />
 
-      <button 
-        onClick={handleConvert}
-        disabled={loading}
-        style={{
-          padding:"10px 20px",
-          background: loading ? "#555" : "#22c55e",
-          border:"none",
-          borderRadius:"8px",
-          color:"#000"
-        }}
-      >
-        {loading ? status : "Merge"}
-      </button>
+      {/* 🔥 TOGGLE PAGE NUMBER */}
+      <label style={{fontSize:"14px"}}>
+        <input
+          type="checkbox"
+          checked={addPageNumbers}
+          onChange={()=>setAddPageNumbers(!addPageNumbers)}
+        />
+        Add Page Numbers
+      </label>
 
-      {downloadUrl && (
-        <a href={downloadUrl} target="_blank">
-          Download Merged PDF 🔥
-        </a>
-      )}
+      {/* 🔥 FILE LIST */}
+      <div style={{width:"100%", maxWidth:"300px"}}>
+        {files.map((f, i) => (
+          <div key={i} style={fileBox}>
+            <span style={{fontSize:"12px"}}>
+              {i+1}. {f.name}
+            </span>
+
+            <div style={{display:"flex", gap:"5px"}}>
+              <button onClick={()=>moveFile(i,-1)}>⬆️</button>
+              <button onClick={()=>moveFile(i,1)}>⬇️</button>
+              <button onClick={()=>removeFile(i)}>❌</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handleMerge} style={btn}>
+        {loading ? "Merging..." : "Merge PDFs"}
+      </button>
 
     </main>
   )
-    }
+}
+
+const layout = {
+  display:"flex",
+  flexDirection:"column",
+  alignItems:"center",
+  justifyContent:"center",
+  minHeight:"100vh",
+  gap:"20px",
+  background:"#020617",
+  color:"#fff",
+  padding:"20px"
+}
+
+const btn = {
+  padding:"12px 20px",
+  background:"#22c55e",
+  border:"none",
+  borderRadius:"8px",
+  color:"#000",
+  fontWeight:"bold"
+}
+
+const fileBox = {
+  display:"flex",
+  justifyContent:"space-between",
+  alignItems:"center",
+  padding:"8px",
+  marginBottom:"5px",
+  background:"#111",
+  borderRadius:"6px"
+        }
