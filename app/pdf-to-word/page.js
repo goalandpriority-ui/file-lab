@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 export default function Page() {
   const [file, setFile] = useState(null)
@@ -11,17 +12,25 @@ export default function Page() {
   const handleConvert = async () => {
     if (!file) return alert("Select file")
 
+    // 🔥 LOGIN CHECK
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
+
     setLoading(true)
     setDownloadUrl("")
     setStatus("Preparing...")
 
     try {
-      // 🔥 STEP 1: Create job (NO FILE SEND)
+      // 🔥 STEP 1: Create job
       const res = await fetch("/api/convert", {
         method: "POST"
       })
 
-      // ✅ ERROR CHECK ADD
       if (!res.ok) {
         const errData = await res.json()
         alert("API ERROR: " + JSON.stringify(errData))
@@ -32,7 +41,6 @@ export default function Page() {
 
       const data = await res.json()
 
-      // ✅ SAFE CHECK
       if (!data.uploadUrl || !data.uploadParams || !data.jobId) {
         alert("Invalid API response: " + JSON.stringify(data))
         setLoading(false)
@@ -42,11 +50,10 @@ export default function Page() {
 
       const { uploadUrl, uploadParams, jobId } = data
 
-      // 🔥 STEP 2: Upload file directly
+      // 🔥 STEP 2: Upload file
       setStatus("Uploading...")
 
       const uploadForm = new FormData()
-
       Object.keys(uploadParams).forEach((key) => {
         uploadForm.append(key, uploadParams[key])
       })
@@ -58,7 +65,6 @@ export default function Page() {
         body: uploadForm
       })
 
-      // ✅ UPLOAD ERROR CHECK
       if (!uploadRes.ok) {
         alert("Upload failed ❌")
         setLoading(false)
@@ -66,7 +72,7 @@ export default function Page() {
         return
       }
 
-      // 🔥 STEP 3: Poll status
+      // 🔥 STEP 3: Poll
       setStatus("Converting...")
 
       const interval = setInterval(async () => {
@@ -79,9 +85,18 @@ export default function Page() {
             setLoading(false)
             setDownloadUrl(data.url)
             setStatus("Done ✅")
+
+            // 🔥 SAVE TO DATABASE
+            await supabase.from("files").insert([
+              {
+                user_id: userData.user.id,
+                name: file.name,
+                type: "pdf-to-word",
+                file_url: data.url
+              }
+            ])
           }
 
-          // ✅ IF ERROR RETURNED
           if (data.error) {
             clearInterval(interval)
             alert("Status Error: " + JSON.stringify(data))
@@ -106,45 +121,57 @@ export default function Page() {
   }
 
   return (
-    <main style={{
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100vh",
-      gap: "20px",
-      background: "#020617",
-      color: "#fff"
-    }}>
+    <main style={layout}>
 
       <h1>PDF to Word</h1>
 
       <input 
         type="file"
+        accept="application/pdf"
         onChange={(e)=>setFile(e.target.files[0])}
       />
 
       <button 
         onClick={handleConvert}
         disabled={loading}
-        style={{
-          padding: "10px 20px",
-          background: loading ? "#555" : "#22c55e",
-          border: "none",
-          borderRadius: "8px",
-          color: "#000",
-          fontWeight: "bold"
-        }}
+        style={btn}
       >
         {loading ? status : "Convert"}
       </button>
 
       {downloadUrl && (
-        <a href={downloadUrl} target="_blank">
+        <a href={downloadUrl} target="_blank" style={link}>
           Download File 🔥
         </a>
       )}
 
     </main>
   )
+}
+
+// 🔥 STYLES
+
+const layout = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "100vh",
+  gap: "20px",
+  background: "#020617",
+  color: "#fff"
+}
+
+const btn = {
+  padding: "12px 20px",
+  background: "#22c55e",
+  border: "none",
+  borderRadius: "8px",
+  color: "#000",
+  fontWeight: "bold"
+}
+
+const link = {
+  color: "#22c55e",
+  fontWeight: "bold"
 }
