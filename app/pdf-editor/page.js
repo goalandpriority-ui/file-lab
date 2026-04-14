@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react"
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 import Draggable from "react-draggable"
 import * as pdfjsLib from "pdfjs-dist"
-import { supabase } from "@/lib/supabase"
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js"
@@ -12,7 +11,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 export default function Page() {
 
   const [file, setFile] = useState(null)
-  const [pdfUrl, setPdfUrl] = useState("")
   const [texts, setTexts] = useState([])
   const [pageIndex, setPageIndex] = useState(0)
   const [zoom, setZoom] = useState(1)
@@ -23,19 +21,18 @@ export default function Page() {
 
   const canvasRef = useRef(null)
 
-  // 🔥 LOAD PDF + THUMBNAILS
+  // 🔥 LOAD FILE + THUMBNAILS
   const handleFile = async (e) => {
     const f = e.target.files[0]
     if (!f) return
 
     setFile(f)
-    setPdfUrl(URL.createObjectURL(f))
 
     const bytes = await f.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
 
+    // thumbnails
     const imgs = []
-
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i)
       const viewport = page.getViewport({ scale: 0.3 })
@@ -52,13 +49,41 @@ export default function Page() {
     }
 
     setImages(imgs)
+    renderPage(pdf, pageIndex)
   }
+
+  // 🔥 RENDER PAGE
+  const renderPage = async (pdfInstance = null, pageNum = pageIndex) => {
+    if (!file && !pdfInstance) return
+
+    const bytes = await file.arrayBuffer()
+    const pdf =
+      pdfInstance || (await pdfjsLib.getDocument({ data: bytes }).promise)
+
+    const page = await pdf.getPage(pageNum + 1)
+    const viewport = page.getViewport({ scale: zoom })
+
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext("2d")
+
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+
+    await page.render({
+      canvasContext: ctx,
+      viewport
+    }).promise
+  }
+
+  useEffect(() => {
+    if (file) renderPage()
+  }, [pageIndex, zoom])
 
   // 🔥 ADD TEXT
   const addText = () => {
     setTexts([
       ...texts,
-      { x: 100, y: 150, text: "Edit", size, color, page: pageIndex }
+      { x: 50, y: 100, text: "Edit", size, color, page: pageIndex }
     ])
   }
 
@@ -73,28 +98,10 @@ export default function Page() {
     ctx.fill()
   }
 
-  // 🔥 SIGNATURE
+  // 🔥 SIGN
   const handleSign = (e) => {
     const img = e.target.files[0]
     if (img) setSign(URL.createObjectURL(img))
-  }
-
-  // 🔥 AUTO SAVE
-  useEffect(() => {
-    saveToSupabase()
-  }, [texts])
-
-  const saveToSupabase = async () => {
-    const { data } = await supabase.auth.getUser()
-    if (!data.user) return
-
-    await supabase.from("files").insert([
-      {
-        user_id: data.user.id,
-        name: file?.name || "edited.pdf",
-        type: "pdf-editor"
-      }
-    ])
   }
 
   // 🔥 DOWNLOAD
@@ -117,7 +124,6 @@ export default function Page() {
     })
 
     const pdfBytes = await pdf.save()
-
     const blob = new Blob([pdfBytes], { type: "application/pdf" })
     const url = URL.createObjectURL(blob)
 
@@ -133,14 +139,9 @@ export default function Page() {
       {/* 🔥 TOOLBAR */}
       <div style={topbar}>
         <input type="file" onChange={handleFile} />
-
         <button onClick={addText}>Text</button>
 
-        <input
-          type="color"
-          value={color}
-          onChange={(e)=>setColor(e.target.value)}
-        />
+        <input type="color" value={color} onChange={(e)=>setColor(e.target.value)} />
 
         <input
           type="range"
@@ -179,66 +180,54 @@ export default function Page() {
         {/* 🔥 VIEWER */}
         <div style={viewer}>
 
-          {pdfUrl && (
-            <>
-              <iframe
-                src={pdfUrl + "#page=" + (pageIndex+1)}
-                style={{ ...iframe, transform:`scale(${zoom})` }}
-              />
+          <canvas
+            ref={canvasRef}
+            onMouseMove={(e)=>e.buttons===1 && draw(e)}
+            style={{borderRadius:"10px", background:"#fff"}}
+          />
 
-              <canvas
-                ref={canvasRef}
-                width={400}
-                height={600}
-                onMouseMove={(e)=>e.buttons===1 && draw(e)}
-                style={{position:"absolute"}}
-              />
-
-              {/* TEXT */}
-              {texts.filter(t=>t.page===pageIndex).map((t,i)=>(
-                <Draggable
-                  key={i}
-                  onStop={(e,data)=>{
+          {/* TEXT */}
+          {texts.filter(t=>t.page===pageIndex).map((t,i)=>(
+            <Draggable
+              key={i}
+              onStop={(e,data)=>{
+                const updated=[...texts]
+                updated[i].x=data.x
+                updated[i].y=data.y
+                setTexts(updated)
+              }}
+            >
+              <div style={{
+                position:"absolute",
+                top:t.y,
+                left:t.x,
+                color:t.color,
+                fontSize:t.size
+              }}>
+                <input
+                  value={t.text}
+                  onChange={(e)=>{
                     const updated=[...texts]
-                    updated[i].x=data.x
-                    updated[i].y=600-data.y
+                    updated[i].text=e.target.value
                     setTexts(updated)
                   }}
-                >
-                  <div style={{
-                    position:"absolute",
-                    top:t.y,
-                    left:t.x,
-                    color:t.color,
-                    fontSize:t.size
-                  }}>
-                    <input
-                      value={t.text}
-                      onChange={(e)=>{
-                        const updated=[...texts]
-                        updated[i].text=e.target.value
-                        setTexts(updated)
-                      }}
-                      style={{background:"transparent",border:"none",color:t.color}}
-                    />
-                  </div>
-                </Draggable>
-              ))}
-
-              {/* SIGN */}
-              {sign && (
-                <img
-                  src={sign}
-                  style={{
-                    position:"absolute",
-                    bottom:"20px",
-                    left:"20px",
-                    width:"100px"
-                  }}
+                  style={{background:"transparent",border:"none",color:t.color}}
                 />
-              )}
+              </div>
+            </Draggable>
+          ))}
 
-            </>
+          {/* SIGN */}
+          {sign && (
+            <img
+              src={sign}
+              style={{
+                position:"absolute",
+                bottom:"20px",
+                left:"20px",
+                width:"100px"
+              }}
+            />
           )}
 
         </div>
@@ -285,10 +274,4 @@ const viewer = {
   display:"flex",
   justifyContent:"center",
   alignItems:"center"
-}
-
-const iframe = {
-  width:"400px",
-  height:"600px",
-  border:"none"
-}
+                   }
