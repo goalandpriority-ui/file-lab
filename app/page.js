@@ -6,21 +6,31 @@ export default function Home() {
       alignItems: "center",
       justifyContent: "center",
       height: "100vh",
-      gap: "20px"
+      gap: "20px",
+      background: "#020617",
+      color: "#fff",
+      padding: "20px"
     }}>
 
-      <h1 style={{fontSize: "32px"}}>
+      <h1 style={{
+        fontSize: "32px",
+        fontWeight: "bold"
+      }}>
         FileLab 🚀
       </h1>
 
-      <p>
+      <p style={{
+        opacity: 0.8
+      }}>
         All-in-One PDF & Image Tools
       </p>
 
       <div style={{
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
-        gap: "10px"
+        gap: "12px",
+        width: "100%",
+        maxWidth: "300px"
       }}>
 
         <a href="/pdf-to-word" style={btn}>PDF → Word</a>
@@ -35,10 +45,12 @@ export default function Home() {
 }
 
 const btn = {
-  padding: "12px",
+  padding: "14px",
   background: "#22c55e",
   color: "#000",
-  textAlign: "center", // ✅ FIXED
-  borderRadius: "8px",
-  textDecoration: "none"
+  textAlign: "center",
+  borderRadius: "10px",
+  textDecoration: "none",
+  fontWeight: "bold",
+  display: "block"
 }
