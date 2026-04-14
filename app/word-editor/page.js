@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
+import { supabase } from "@/lib/supabase"
 
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false })
 import "react-quill/dist/quill.snow.css"
@@ -11,7 +12,7 @@ export default function Page() {
   const [pages, setPages] = useState([""])
   const [dragged, setDragged] = useState(null)
 
-  // 🔥 LOAD SAVED
+  // 🔥 LOAD SAVED (LOCAL)
   useEffect(() => {
     const saved = localStorage.getItem("doc")
     if (saved) setPages(JSON.parse(saved))
@@ -27,7 +28,6 @@ export default function Page() {
     const updated = [...pages]
     updated[index] = value
 
-    // 🔥 AUTO SPLIT (basic)
     if (value.length > 1500) {
       const half = value.slice(0, 1000)
       const rest = value.slice(1000)
@@ -51,12 +51,9 @@ export default function Page() {
     setPages(updated)
   }
 
-  // 🔥 DRAG START
-  const dragStart = (i) => {
-    setDragged(i)
-  }
+  // 🔥 DRAG
+  const dragStart = (i) => setDragged(i)
 
-  // 🔥 DROP
   const drop = (i) => {
     if (dragged === null) return
 
@@ -69,7 +66,7 @@ export default function Page() {
     setDragged(null)
   }
 
-  // 🔥 TEMPLATE (RESUME)
+  // 🔥 TEMPLATE
   const loadTemplate = () => {
     setPages([`
       <h1>John Doe</h1>
@@ -81,9 +78,18 @@ export default function Page() {
     `])
   }
 
-  // 🔥 DOWNLOAD DOC
-  const downloadDoc = () => {
+  // 🔥 DOWNLOAD DOC + SAVE
+  const downloadDoc = async () => {
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
+
     const full = pages.join("<div style='page-break-after:always'></div>")
+
     const blob = new Blob([full], { type: "application/msword" })
     const url = URL.createObjectURL(blob)
 
@@ -91,14 +97,43 @@ export default function Page() {
     a.href = url
     a.download = "document.doc"
     a.click()
+
+    // 🔥 SAVE
+    await supabase.from("files").insert([
+      {
+        user_id: userData.user.id,
+        name: "document.doc",
+        type: "word-editor",
+        file_url: url
+      }
+    ])
   }
 
-  // 🔥 DOWNLOAD PDF
-  const downloadPDF = () => {
+  // 🔥 DOWNLOAD PDF + SAVE
+  const downloadPDF = async () => {
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
+
     const full = pages.join("<div style='page-break-after:always'></div>")
+
     const win = window.open("", "", "width=800,height=600")
     win.document.write(full)
     win.print()
+
+    // 🔥 SAVE (no direct URL)
+    await supabase.from("files").insert([
+      {
+        user_id: userData.user.id,
+        name: "document.pdf",
+        type: "word-editor",
+        file_url: "" // print-based
+      }
+    ])
   }
 
   return (
@@ -145,6 +180,8 @@ export default function Page() {
   )
 }
 
+// 🔥 STYLES
+
 const layout = {
   display:"flex",
   flexDirection:"column",
@@ -170,4 +207,4 @@ const pageBox = {
   padding:"10px",
   borderRadius:"10px",
   cursor:"grab"
-              }
+}
