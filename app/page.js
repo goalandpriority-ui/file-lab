@@ -38,7 +38,7 @@ const btn = {
   padding: "12px",
   background: "#22c55e",
   color: "#000",
-  textAlign: "center" as const,
+  textAlign: "center", // ✅ FIXED
   borderRadius: "8px",
   textDecoration: "none"
 }
