@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 export default function Page() {
   const [file, setFile] = useState(null)
@@ -10,6 +11,15 @@ export default function Page() {
 
   const handleConvert = async () => {
     if (!file) return alert("Select PDF")
+
+    // 🔥 CHECK LOGIN
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
 
     setLoading(true)
     setStatus("Preparing...")
@@ -43,10 +53,20 @@ export default function Page() {
           setLoading(false)
           setDownloadUrl(data.url)
           setStatus("Done ✅")
+
+          // 🔥 SAVE TO DATABASE
+          await supabase.from("files").insert([
+            {
+              user_id: userData.user.id,
+              name: file.name,
+              type: "compress-pdf"
+            }
+          ])
         }
       }, 2000)
 
-    } catch {
+    } catch (err) {
+      console.error(err)
       setLoading(false)
       alert("Error ❌")
     }
@@ -55,14 +75,32 @@ export default function Page() {
   return (
     <main style={layout}>
       <h1>Compress PDF</h1>
-      <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
-      <button onClick={handleConvert}>
+
+      <input 
+        type="file" 
+        accept="application/pdf"
+        onChange={(e)=>setFile(e.target.files[0])}
+      />
+
+      <button 
+        onClick={handleConvert}
+        disabled={loading}
+        style={btn}
+      >
         {loading ? status : "Compress"}
       </button>
-      {downloadUrl && <a href={downloadUrl}>Download 🔥</a>}
+
+      {downloadUrl && (
+        <a href={downloadUrl} target="_blank" style={link}>
+          Download 🔥
+        </a>
+      )}
+
     </main>
   )
 }
+
+// 🔥 STYLES
 
 const layout = {
   display:"flex",
@@ -73,4 +111,17 @@ const layout = {
   gap:"20px",
   background:"#020617",
   color:"#fff"
+}
+
+const btn = {
+  padding:"12px 20px",
+  background:"#22c55e",
+  border:"none",
+  borderRadius:"8px",
+  fontWeight:"bold"
+}
+
+const link = {
+  color:"#22c55e",
+  fontWeight:"bold"
 }
