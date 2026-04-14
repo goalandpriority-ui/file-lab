@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 export default function Page() {
   const [file, setFile] = useState(null)
@@ -10,6 +11,15 @@ export default function Page() {
 
   const handleConvert = async () => {
     if (!file) return alert("Select Word file")
+
+    // 🔥 LOGIN CHECK
+    const { data: userData } = await supabase.auth.getUser()
+
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
 
     setLoading(true)
     setDownloadUrl("")
@@ -47,10 +57,21 @@ export default function Page() {
           setLoading(false)
           setDownloadUrl(data.url)
           setStatus("Done ✅")
+
+          // 🔥 SAVE TO DATABASE
+          await supabase.from("files").insert([
+            {
+              user_id: userData.user.id,
+              name: file.name,
+              type: "word-to-pdf",
+              file_url: data.url
+            }
+          ])
         }
       }, 2000)
 
     } catch (err) {
+      console.error(err)
       setLoading(false)
       setStatus("Error ❌")
       alert("Something went wrong")
@@ -58,25 +79,56 @@ export default function Page() {
   }
 
   return (
-    <main style={{
-      display:"flex",
-      flexDirection:"column",
-      alignItems:"center",
-      justifyContent:"center",
-      height:"100vh",
-      gap:"20px",
-      background:"#020617",
-      color:"#fff"
-    }}>
+    <main style={layout}>
       <h1>Word → PDF</h1>
 
-      <input type="file" onChange={(e)=>setFile(e.target.files[0])} />
+      <input 
+        type="file"
+        accept=".doc,.docx"
+        onChange={(e)=>setFile(e.target.files[0])}
+      />
 
-      <button onClick={handleConvert}>
+      <button 
+        onClick={handleConvert}
+        disabled={loading}
+        style={btn}
+      >
         {loading ? status : "Convert"}
       </button>
 
-      {downloadUrl && <a href={downloadUrl}>Download 🔥</a>}
+      {downloadUrl && (
+        <a href={downloadUrl} target="_blank" style={link}>
+          Download 🔥
+        </a>
+      )}
+
     </main>
   )
-      }
+}
+
+// 🔥 STYLES
+
+const layout = {
+  display:"flex",
+  flexDirection:"column",
+  alignItems:"center",
+  justifyContent:"center",
+  height:"100vh",
+  gap:"20px",
+  background:"#020617",
+  color:"#fff"
+}
+
+const btn = {
+  padding:"12px 20px",
+  background:"#22c55e",
+  border:"none",
+  borderRadius:"8px",
+  color:"#000",
+  fontWeight:"bold"
+}
+
+const link = {
+  color:"#22c55e",
+  fontWeight:"bold"
+}
