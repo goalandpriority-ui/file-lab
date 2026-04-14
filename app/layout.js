@@ -3,11 +3,7 @@ export const metadata = {
   description: "All-in-One PDF & Image Tools"
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body style={{
