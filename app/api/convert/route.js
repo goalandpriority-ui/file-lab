@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server"
 
-export async function POST(req: Request) {
+export async function POST(req) {
   const data = await req.formData()
-  const file = data.get("file") as File
+  const file = data.get("file")
 
   if (!file) {
     return NextResponse.json({ error: "No file" })
   }
 
-  const apiKey = process.env.CLOUDCONVERT_API_KEY!
+  const apiKey = process.env.CLOUDCONVERT_API_KEY
 
-  const res = await fetch("https://api.cloudconvert.com/v2/jobs", {
+  const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -18,23 +18,63 @@ export async function POST(req: Request) {
     },
     body: JSON.stringify({
       tasks: {
-        "import-file": {
+        upload: {
           operation: "import/upload"
         },
-        "convert-file": {
+        convert: {
           operation: "convert",
-          input: "import-file",
+          input: "upload",
           input_format: "pdf",
           output_format: "docx"
         },
-        "export-file": {
+        export: {
           operation: "export/url",
-          input: "convert-file"
+          input: "convert"
         }
       }
     })
   })
 
-  const json = await res.json()
-  return NextResponse.json(json)
+  const jobData = await jobRes.json()
+
+  const uploadTask = jobData.data.tasks.find(t => t.name === "upload")
+
+  const uploadUrl = uploadTask.result.form.url
+  const uploadParams = uploadTask.result.form.parameters
+
+  const uploadForm = new FormData()
+
+  Object.keys(uploadParams).forEach((key) => {
+    uploadForm.append(key, uploadParams[key])
+  })
+
+  uploadForm.append("file", file)
+
+  await fetch(uploadUrl, {
+    method: "POST",
+    body: uploadForm
+  })
+
+  let exportUrl = null
+
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 2000))
+
+    const check = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobData.data.id}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      }
+    })
+
+    const checkData = await check.json()
+
+    const exportTask = checkData.data.tasks.find(t => t.name === "export")
+
+    if (exportTask && exportTask.status === "finished") {
+      exportUrl = exportTask.result.files[0].url
+      break
+    }
+  }
+
+  return NextResponse.json({ url: exportUrl })
 }
