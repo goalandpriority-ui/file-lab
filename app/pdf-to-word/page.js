@@ -4,10 +4,14 @@ import { useState } from "react"
 
 export default function Page() {
 
-  const [file, setFile] = useState<File | null>(null)
+  const [file, setFile] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [downloadUrl, setDownloadUrl] = useState("")
 
-  const handleUpload = async () => {
+  const handleConvert = async () => {
     if (!file) return alert("Select file")
+
+    setLoading(true)
 
     const formData = new FormData()
     formData.append("file", file)
@@ -18,9 +22,14 @@ export default function Page() {
     })
 
     const data = await res.json()
-    console.log(data)
 
-    alert("Check console for result 🔥")
+    setLoading(false)
+
+    if (data.url) {
+      setDownloadUrl(data.url)
+    } else {
+      alert("Conversion failed ❌")
+    }
   }
 
   return (
@@ -37,17 +46,23 @@ export default function Page() {
 
       <input 
         type="file" 
-        onChange={(e)=>setFile(e.target.files?.[0] || null)}
+        onChange={(e)=>setFile(e.target.files[0])}
       />
 
-      <button onClick={handleUpload} style={{
+      <button onClick={handleConvert} style={{
         padding: "10px 20px",
         background: "#22c55e",
         border: "none",
         borderRadius: "8px"
       }}>
-        Convert
+        {loading ? "Converting..." : "Convert"}
       </button>
+
+      {downloadUrl && (
+        <a href={downloadUrl} target="_blank">
+          Download File 🔥
+        </a>
+      )}
 
     </main>
   )
