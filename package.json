@@ -12,7 +12,7 @@
     "react-dom": "18.2.0",
     "pdf-lib": "^1.17.1",
     "jszip": "^3.10.1",
-    "pdfjs-dist": "^4.0.379",
+    "pdfjs-dist": "3.11.174",
     "react-draggable": "^4.4.6",
     "react-quill": "^2.0.0",
     "@supabase/supabase-js": "^2.43.4"
