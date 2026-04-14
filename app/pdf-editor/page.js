@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import * as pdfjsLib from "pdfjs-dist"
 
-// 🔥 WORKER FIX (VERY IMPORTANT)
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js"
+// 🔥 IMPORTANT FIX (DIFFERENT IMPORT)
+import * as pdfjsLib from "pdfjs-dist/build/pdf"
+
+// 🔥 WORKER FIX (LOCAL SAFE)
+import "pdfjs-dist/build/pdf.worker.entry"
 
 export default function Page() {
 
@@ -22,66 +23,63 @@ export default function Page() {
     if (!f) return
 
     setFile(f)
-    loadPage(f, 0)
-  }
 
-  // 🔥 MAIN FIXED RENDER FUNCTION
-  const loadPage = async (fileObj, pageNum) => {
     try {
-      const bytes = await fileObj.arrayBuffer()
-
-      const loadingTask = pdfjsLib.getDocument({ data: bytes })
-      const pdf = await loadingTask.promise
-
-      const page = await pdf.getPage(pageNum + 1)
-
-      const viewport = page.getViewport({ scale })
-
-      const canvas = canvasRef.current
-      const ctx = canvas.getContext("2d")
-
-      // 🔥 MOBILE + BLUR FIX
-      const dpr = window.devicePixelRatio || 1
-
-      canvas.width = viewport.width * dpr
-      canvas.height = viewport.height * dpr
-
-      canvas.style.width = viewport.width + "px"
-      canvas.style.height = viewport.height + "px"
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      await page.render({
-        canvasContext: ctx,
-        viewport
-      }).promise
-
-      // 🔥 TEXT LAYER FIX
-      const textContent = await page.getTextContent()
-
-      const items = textContent.items.map((item) => ({
-        str: item.str,
-        x: item.transform[4],
-        y: viewport.height - item.transform[5],
-        fontSize: item.height || 14
-      }))
-
-      setTextItems(items)
-
+      await loadPage(f, 0)
     } catch (err) {
-      console.error("PDF ERROR:", err)
+      console.error(err)
       alert("PDF load failed ❌")
     }
   }
 
-  // 🔥 PAGE CHANGE / ZOOM
+  // 🔥 MAIN RENDER
+  const loadPage = async (fileObj, pageNum) => {
+
+    const bytes = await fileObj.arrayBuffer()
+
+    const pdf = await pdfjsLib.getDocument({
+      data: bytes
+    }).promise
+
+    const page = await pdf.getPage(pageNum + 1)
+
+    const viewport = page.getViewport({ scale })
+
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext("2d")
+
+    const dpr = window.devicePixelRatio || 1
+
+    canvas.width = viewport.width * dpr
+    canvas.height = viewport.height * dpr
+
+    canvas.style.width = viewport.width + "px"
+    canvas.style.height = viewport.height + "px"
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    await page.render({
+      canvasContext: ctx,
+      viewport
+    }).promise
+
+    // 🔥 TEXT
+    const textContent = await page.getTextContent()
+
+    const items = textContent.items.map((item) => ({
+      str: item.str,
+      x: item.transform[4],
+      y: viewport.height - item.transform[5],
+      fontSize: item.height || 14
+    }))
+
+    setTextItems(items)
+  }
+
   useEffect(() => {
     if (file) loadPage(file, pageIndex)
   }, [pageIndex, scale])
 
-  // 🔥 UPDATE TEXT
   const updateText = (i, val) => {
     const updated = [...textItems]
     updated[i].str = val
@@ -91,7 +89,6 @@ export default function Page() {
   return (
     <main style={layout}>
 
-      {/* 🔥 TOPBAR */}
       <div style={topbar}>
         <input type="file" onChange={handleFile} />
 
@@ -102,11 +99,9 @@ export default function Page() {
         <button onClick={()=>setScale(s=>Math.max(0.5,s-0.2))}>Zoom -</button>
       </div>
 
-      {/* 🔥 VIEWER */}
       <div style={viewer}>
         <canvas ref={canvasRef} style={{background:"#fff"}} />
 
-        {/* 🔥 TEXT EDIT LAYER */}
         {textItems.map((t, i) => (
           <input
             key={i}
@@ -119,8 +114,7 @@ export default function Page() {
               fontSize:t.fontSize,
               border:"none",
               background:"rgba(0,0,0,0.1)",
-              color:"red",
-              outline:"none"
+              color:"red"
             }}
           />
         ))}
@@ -129,8 +123,6 @@ export default function Page() {
     </main>
   )
 }
-
-/* 🔥 STYLES */
 
 const layout = {
   minHeight:"100vh",
@@ -153,8 +145,5 @@ const topbar = {
 const viewer = {
   position:"relative",
   overflow:"auto",
-  display:"flex",
-  justifyContent:"center",
-  alignItems:"flex-start",
   padding:"20px"
 }
