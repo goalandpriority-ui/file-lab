@@ -83,7 +83,7 @@ export async function POST(req) {
     }
 
     /* =========================
-       🔥 4. CREATE JOB
+       🔥 4. CREATE JOB (FIXED ✅)
     ========================= */
     const jobRes = await fetch("https://pdf-services.adobe.io/operation/exportpdf", {
       method: "POST",
@@ -93,8 +93,10 @@ export async function POST(req) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        assetID: uploadData.assetID,
-        targetFormat: "docx"
+        inputAsset: {
+          assetID: uploadData.assetID
+        },
+        outputFormat: "docx"
       })
     })
 
@@ -111,7 +113,7 @@ export async function POST(req) {
     const statusUrl = jobData._links.self.href
 
     /* =========================
-       🔥 5. POLLING (VERY IMPORTANT)
+       🔥 5. POLLING
     ========================= */
     let resultData = null
 
@@ -133,7 +135,12 @@ export async function POST(req) {
       if (resultData.status === "done") break
     }
 
-    if (!resultData?.asset?.downloadUri) {
+    /* =========================
+       🔥 6. GET DOWNLOAD URL (FIXED ✅)
+    ========================= */
+    const downloadUrl = resultData?.outputs?.[0]?.asset?.downloadUri
+
+    if (!downloadUrl) {
       return NextResponse.json({
         error: "❌ Conversion not ready",
         resultData
@@ -141,9 +148,9 @@ export async function POST(req) {
     }
 
     /* =========================
-       🔥 6. DOWNLOAD FILE
+       🔥 7. DOWNLOAD FILE
     ========================= */
-    const fileRes = await fetch(resultData.asset.downloadUri)
+    const fileRes = await fetch(downloadUrl)
 
     if (!fileRes.ok) {
       return NextResponse.json({
