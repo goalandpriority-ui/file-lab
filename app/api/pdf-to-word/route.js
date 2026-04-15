@@ -12,7 +12,7 @@ export async function POST(req) {
     const buffer = await file.arrayBuffer()
 
     /* =========================
-       🔥 1. GET ACCESS TOKEN
+       🔥 1. GET TOKEN
     ========================= */
     const tokenRes = await fetch("https://ims-na1.adobelogin.com/ims/token/v3", {
       method: "POST",
@@ -27,14 +27,10 @@ export async function POST(req) {
       })
     })
 
-    const tokenText = await tokenRes.text()
-    const tokenData = tokenText ? JSON.parse(tokenText) : {}
+    const tokenData = JSON.parse(await tokenRes.text())
 
     if (!tokenData.access_token) {
-      return NextResponse.json({
-        error: "❌ Token failed",
-        tokenData
-      })
+      return NextResponse.json({ error: "Token failed", tokenData })
     }
 
     const accessToken = tokenData.access_token
@@ -54,14 +50,10 @@ export async function POST(req) {
       })
     })
 
-    const uploadText = await uploadRes.text()
-    const uploadData = uploadText ? JSON.parse(uploadText) : {}
+    const uploadData = JSON.parse(await uploadRes.text())
 
     if (!uploadData.uploadUri) {
-      return NextResponse.json({
-        error: "❌ Upload init failed",
-        uploadData
-      })
+      return NextResponse.json({ error: "Upload init failed", uploadData })
     }
 
     /* =========================
@@ -76,14 +68,11 @@ export async function POST(req) {
     })
 
     if (!putRes.ok) {
-      return NextResponse.json({
-        error: "❌ File upload failed",
-        status: putRes.status
-      })
+      return NextResponse.json({ error: "Upload failed" })
     }
 
     /* =========================
-       🔥 4. CREATE JOB (FIXED ✅)
+       🔥 4. CREATE JOB (FINAL FIX ✅)
     ========================= */
     const jobRes = await fetch("https://pdf-services.adobe.io/operation/exportpdf", {
       method: "POST",
@@ -93,21 +82,19 @@ export async function POST(req) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        inputAsset: {
+        input: {
           assetID: uploadData.assetID
         },
-        outputFormat: "docx"
+        params: {
+          targetFormat: "docx"
+        }
       })
     })
 
-    const jobText = await jobRes.text()
-    const jobData = jobText ? JSON.parse(jobText) : {}
+    const jobData = JSON.parse(await jobRes.text())
 
     if (!jobData._links?.self?.href) {
-      return NextResponse.json({
-        error: "❌ Job creation failed",
-        jobData
-      })
+      return NextResponse.json({ error: "Job failed", jobData })
     }
 
     const statusUrl = jobData._links.self.href
@@ -127,36 +114,24 @@ export async function POST(req) {
         }
       })
 
-      const statusText = await statusRes.text()
-      resultData = statusText ? JSON.parse(statusText) : {}
-
-      console.log("Polling:", resultData.status)
+      resultData = JSON.parse(await statusRes.text())
 
       if (resultData.status === "done") break
     }
 
     /* =========================
-       🔥 6. GET DOWNLOAD URL (FIXED ✅)
+       🔥 6. DOWNLOAD URL
     ========================= */
     const downloadUrl = resultData?.outputs?.[0]?.asset?.downloadUri
 
     if (!downloadUrl) {
-      return NextResponse.json({
-        error: "❌ Conversion not ready",
-        resultData
-      })
+      return NextResponse.json({ error: "Conversion failed", resultData })
     }
 
     /* =========================
        🔥 7. DOWNLOAD FILE
     ========================= */
     const fileRes = await fetch(downloadUrl)
-
-    if (!fileRes.ok) {
-      return NextResponse.json({
-        error: "❌ Download failed"
-      })
-    }
 
     const fileBuffer = await fileRes.arrayBuffer()
 
@@ -170,8 +145,7 @@ export async function POST(req) {
 
   } catch (err) {
     return NextResponse.json({
-      error: "🔥 Server crash",
-      details: err.message
+      error: err.message
     })
   }
 }
