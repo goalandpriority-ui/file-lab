@@ -7,9 +7,6 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 import Draggable from "react-draggable"
 import Tesseract from "tesseract.js"
 
-// 👉 OPTIONAL (enable later)
-// import { supabase } from "@/lib/supabase"
-
 export default function Page() {
 
   const [file, setFile] = useState(null)
@@ -22,14 +19,24 @@ export default function Page() {
   const [findText, setFindText] = useState("")
   const [replaceText, setReplaceText] = useState("")
 
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState("")
+
   const canvasRef = useRef(null)
 
   // 🔥 LOAD PDF
   const handleFile = async (e) => {
     const f = e.target.files[0]
     if (!f) return
+
+    setLoading(true)
+    setStatus("Rendering PDF...")
+
     setFile(f)
-    renderPage(f, 0)
+    await renderPage(f, 0)
+
+    setLoading(false)
+    setStatus("")
   }
 
   // 🔥 RENDER
@@ -57,7 +64,12 @@ export default function Page() {
   const runOCR = async () => {
     const canvas = canvasRef.current
 
+    setLoading(true)
+    setStatus("🤖 AI analyzing document...")
+
     const { data } = await Tesseract.recognize(canvas, "eng")
+
+    setStatus("🧠 Detecting text layers...")
 
     const words = data.words.map(w => ({
       x: w.bbox.x0,
@@ -69,9 +81,13 @@ export default function Page() {
     }))
 
     setTexts(words)
+
+    setLoading(false)
+    setStatus("✅ AI processing complete")
+    setTimeout(()=>setStatus(""),2000)
   }
 
-  // 🔥 AI STYLE REPLACE (SMART FIND & REPLACE)
+  // 🔥 REPLACE
   const handleReplace = () => {
     if (!findText) return
 
@@ -85,9 +101,12 @@ export default function Page() {
     setTexts(updated)
   }
 
-  // 🔥 SAVE PDF
+  // 🔥 SAVE
   const handleDownload = async () => {
     if (!file) return
+
+    setLoading(true)
+    setStatus("💾 Generating PDF...")
 
     const bytes = await file.arrayBuffer()
     const pdfDoc = await PDFDocument.load(bytes)
@@ -114,63 +133,55 @@ export default function Page() {
     a.href = url
     a.download = "edited.pdf"
     a.click()
+
+    setLoading(false)
+    setStatus("✅ Download ready")
+    setTimeout(()=>setStatus(""),2000)
   }
 
   return (
-    <main style={{background:"#020617", color:"#fff", minHeight:"100vh"}}>
+    <main style={main}>
 
-      {/* 🔥 TOOLBAR */}
-      <div style={{
-        padding:"10px",
-        background:"#111",
-        display:"flex",
-        gap:"10px",
-        flexWrap:"wrap"
-      }}>
-
+      {/* 🔥 TOP BAR */}
+      <div style={toolbar}>
         <input type="file" onChange={handleFile} />
 
-        <button onClick={runOCR}>🧠 OCR</button>
+        <button style={btn} onClick={runOCR}>🧠 OCR</button>
 
-        <button onClick={()=>setScale(s=>s+0.2)}>➕</button>
-        <button onClick={()=>setScale(s=>Math.max(1,s-0.2))}>➖</button>
+        <button style={btn} onClick={()=>setScale(s=>s+0.2)}>➕</button>
+        <button style={btn} onClick={()=>setScale(s=>Math.max(1,s-0.2))}>➖</button>
 
-        <button onClick={()=>setPageIndex(p=>Math.max(0,p-1))}>Prev</button>
-        <button onClick={()=>setPageIndex(p=>p+1)}>Next</button>
+        <button style={btn} onClick={()=>setPageIndex(p=>Math.max(0,p-1))}>Prev</button>
+        <button style={btn} onClick={()=>setPageIndex(p=>p+1)}>Next</button>
 
-        <button onClick={handleDownload}>💾 Save</button>
-
+        <button style={btn} onClick={handleDownload}>💾 Save</button>
       </div>
 
-      {/* 🔥 AI REPLACE BAR */}
-      <div style={{
-        padding:"10px",
-        background:"#0f172a",
-        display:"flex",
-        gap:"10px"
-      }}>
+      {/* 🔥 STATUS */}
+      {loading && (
+        <div style={loaderBox}>
+          <div style={spinner}></div>
+          <p>{status}</p>
+        </div>
+      )}
+
+      {/* 🔥 AI BAR */}
+      <div style={aiBar}>
         <input
           placeholder="Find text"
           value={findText}
           onChange={(e)=>setFindText(e.target.value)}
         />
-
         <input
           placeholder="Replace with"
           value={replaceText}
           onChange={(e)=>setReplaceText(e.target.value)}
         />
-
-        <button onClick={handleReplace}>⚡ Replace</button>
+        <button style={btn} onClick={handleReplace}>⚡ Replace</button>
       </div>
 
       {/* 🔥 VIEW */}
-      <div style={{
-        position:"relative",
-        display:"flex",
-        justifyContent:"center",
-        marginTop:"10px"
-      }}>
+      <div style={viewer}>
         <canvas ref={canvasRef} style={{background:"#fff"}} />
 
         {texts.map((t, i) => (
@@ -198,4 +209,59 @@ export default function Page() {
 
     </main>
   )
-              }
+}
+
+/* 🔥 STYLES */
+
+const main = {
+  background:"#020617",
+  color:"#fff",
+  minHeight:"100vh"
+}
+
+const toolbar = {
+  padding:"10px",
+  background:"#111",
+  display:"flex",
+  gap:"10px",
+  flexWrap:"wrap"
+}
+
+const btn = {
+  padding:"8px 12px",
+  background:"#22c55e",
+  border:"none",
+  borderRadius:"8px",
+  fontWeight:"600",
+  cursor:"pointer"
+}
+
+const aiBar = {
+  padding:"10px",
+  background:"#0f172a",
+  display:"flex",
+  gap:"10px"
+}
+
+const viewer = {
+  position:"relative",
+  display:"flex",
+  justifyContent:"center",
+  marginTop:"10px"
+}
+
+const loaderBox = {
+  display:"flex",
+  flexDirection:"column",
+  alignItems:"center",
+  marginTop:"10px"
+}
+
+const spinner = {
+  width:"30px",
+  height:"30px",
+  border:"4px solid #22c55e",
+  borderTop:"4px solid transparent",
+  borderRadius:"50%",
+  animation:"spin 1s linear infinite"
+  }
