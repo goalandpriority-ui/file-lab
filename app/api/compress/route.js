@@ -7,17 +7,21 @@ export async function POST(req) {
 
     const apiKey = process.env.CLOUDCONVERT_API_KEY
 
-    // 🔥 PRO LEVEL MAPPING (CORRECT)
-    let profile = "ebook" // default
+    // 🔥 LEVEL → PROFILE + DPI MAP
+    let profile = "ebook"
+    let dpi = 150
 
     if (level === "low") {
-      profile = "prepress"   // 🔥 BEST QUALITY (least compression)
+      profile = "prepress"   // high quality
+      dpi = 300
     } 
     else if (level === "medium") {
-      profile = "ebook"      // 🔥 BALANCED
+      profile = "ebook"      // balanced
+      dpi = 150
     } 
     else if (level === "high") {
-      profile = "screen"     // 🔥 MAX COMPRESSION (small size)
+      profile = "screen"     // max compression
+      dpi = 72
     }
 
     const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
@@ -32,12 +36,14 @@ export async function POST(req) {
             operation: "import/upload"
           },
 
-          // 🔥 MAIN FIX HERE
+          // 🔥 FINAL PRO COMPRESSION
           "compress-file": {
             operation: "optimize",
             input: "import-file",
-            engine: "ghostscript",   // ✅ MUST
-            profile: profile         // ✅ LEVEL BASED
+            engine: "ghostscript",
+            profile: profile,
+            flatten: true,
+            dpi: dpi
           },
 
           "export-file": {
@@ -50,7 +56,7 @@ export async function POST(req) {
 
     const jobData = await jobRes.json()
 
-    // 🔥 ERROR SAFETY
+    // 🔥 DEBUG (important for errors)
     if (!jobData?.data?.tasks) {
       console.error("CloudConvert Error:", jobData)
       return NextResponse.json(
@@ -64,6 +70,7 @@ export async function POST(req) {
     )
 
     if (!uploadTask?.result?.form) {
+      console.error("Upload Task Error:", uploadTask)
       return NextResponse.json(
         { error: "Upload task error" },
         { status: 500 }
