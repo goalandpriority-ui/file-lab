@@ -21,8 +21,8 @@ export default function Page() {
 
   // 🔥 % SAVED
   const getSavedPercent = () => {
-    if (!beforeSize || !afterSize) return null
-    return ((beforeSize - afterSize) / beforeSize * 100).toFixed(1)
+    if (!beforeSize || !afterSize) return 0
+    return ((beforeSize - afterSize) / beforeSize * 100)
   }
 
   const handleConvert = async () => {
@@ -44,8 +44,7 @@ export default function Page() {
     setBeforeSize(file.size)
 
     try {
-      // 🔥 CREATE JOB WITH LEVEL
-      const res = await fetch(`/api/convert?type=compress-pdf&level=${level}`, {
+      const res = await fetch(`/api/compress?level=${level}`, {
         method: "POST"
       })
 
@@ -72,7 +71,6 @@ export default function Page() {
 
           setStatus("Finalizing...")
 
-          // 🔥 GET FINAL FILE SIZE (FIXED)
           const resFile = await fetch(data.url)
           const blob = await resFile.blob()
 
@@ -98,6 +96,10 @@ export default function Page() {
     }
   }
 
+  // 🔥 SMART DISPLAY LOGIC
+  const saved = getSavedPercent()
+  const showStats = beforeSize && afterSize && saved > 1
+
   return (
     <main style={layout}>
       <h1>Compress PDF 🔥</h1>
@@ -112,7 +114,6 @@ export default function Page() {
         }}
       />
 
-      {/* 🔥 LEVEL SELECT */}
       <select
         value={level}
         onChange={(e) => setLevel(e.target.value)}
@@ -123,29 +124,29 @@ export default function Page() {
         <option value="high">High (Small Size)</option>
       </select>
 
-      {/* 🔥 SIZE INFO */}
-      {beforeSize && (
-        <p>Before: {formatSize(beforeSize)}</p>
+      {/* 🔥 SHOW ONLY IF USEFUL */}
+      {showStats && (
+        <>
+          <p>Before: {formatSize(beforeSize)}</p>
+
+          <p style={{ color: "#22c55e" }}>
+            After: {formatSize(afterSize)}
+          </p>
+
+          <p style={{ color: "#22c55e", fontWeight: "bold" }}>
+            Saved: {saved.toFixed(1)}% 🚀
+          </p>
+        </>
       )}
 
-      {afterSize && (
-        <p style={{ color: "#22c55e" }}>
-          After: {formatSize(afterSize)}
+      {/* 🔥 ALREADY OPTIMIZED MESSAGE */}
+      {beforeSize && afterSize && saved <= 1 && (
+        <p style={{ color: "#facc15" }}>
+          Already optimized 😅
         </p>
       )}
 
-      {/* 🔥 % SAVED */}
-      {beforeSize && afterSize && (
-        <p style={{ color: "#22c55e", fontWeight: "bold" }}>
-          Saved: {getSavedPercent()}% 🚀
-        </p>
-      )}
-
-      <button
-        onClick={handleConvert}
-        disabled={loading}
-        style={btn}
-      >
+      <button onClick={handleConvert} disabled={loading} style={btn}>
         {loading ? status : "Compress"}
       </button>
 
@@ -187,4 +188,4 @@ const link = {
 const select = {
   padding: "10px",
   borderRadius: "8px"
-  }
+        }
