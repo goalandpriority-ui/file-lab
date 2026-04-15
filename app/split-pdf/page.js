@@ -15,11 +15,13 @@ export default function Page() {
   const [selected, setSelected] = useState([])
   const [images, setImages] = useState([])
   const [loading, setLoading] = useState(false)
-  const [range, setRange] = useState("") // 🔥 NEW
+  const [range, setRange] = useState("")
+  const [previewPages, setPreviewPages] = useState([])
+  const [dragIndex, setDragIndex] = useState(null) // 🔥 NEW
 
-  // 🔥 RANGE PARSER
+  // ✅ RANGE PARSER
   const parseRanges = (input) => {
-    const parts = input.split(",")
+    const parts = input.split(",").filter(Boolean)
     let result = []
 
     for (let part of parts) {
@@ -36,7 +38,7 @@ export default function Page() {
     return [...new Set(result)]
   }
 
-  // 🔥 LOAD PDF + THUMBNAIL
+  // 🔥 LOAD PDF
   const handleFile = async (e) => {
     const f = e.target.files[0]
     if (!f) return
@@ -72,7 +74,6 @@ export default function Page() {
     setImages(imgs)
   }
 
-  // 🔥 TOGGLE
   const togglePage = (index) => {
     if (selected.includes(index)) {
       setSelected(selected.filter(p => p !== index))
@@ -81,7 +82,6 @@ export default function Page() {
     }
   }
 
-  // 🔥 MOVE
   const move = (i, dir) => {
     const arr = [...pages]
     const target = i + dir
@@ -91,9 +91,51 @@ export default function Page() {
     setPages(arr)
   }
 
-  // 🔥 SPLIT (UPDATED)
+  const getFinalPages = () => {
+    if (previewPages.length > 0) return previewPages
+
+    let finalPages = selected
+
+    if (range.trim() !== "") {
+      finalPages = parseRanges(range)
+    }
+
+    return finalPages.sort((a, b) => a - b)
+  }
+
+  // 🔥 PREVIEW
+  const handlePreview = () => {
+    const finalPages = getFinalPages()
+    setPreviewPages(finalPages)
+  }
+
+  // ❌ REMOVE PAGE
+  const removePreviewPage = (index) => {
+    setPreviewPages(previewPages.filter((_, i) => i !== index))
+  }
+
+  // 🧠 DRAG START
+  const handleDragStart = (index) => {
+    setDragIndex(index)
+  }
+
+  // 🧠 DROP
+  const handleDrop = (index) => {
+    if (dragIndex === null) return
+
+    const updated = [...previewPages]
+    const draggedItem = updated[dragIndex]
+
+    updated.splice(dragIndex, 1)
+    updated.splice(index, 0, draggedItem)
+
+    setPreviewPages(updated)
+    setDragIndex(null)
+  }
+
+  // 🔥 ZIP DOWNLOAD
   const handleSplit = async () => {
-    if (!file) return alert("Upload PDF da macha 😤")
+    if (!file) return alert("Upload PDF 😤")
 
     const { data: userData } = await supabase.auth.getUser()
     if (!userData?.user) {
@@ -109,15 +151,7 @@ export default function Page() {
       const pdf = await PDFDocument.load(bytes)
       const zip = new JSZip()
 
-      let finalPages = selected
-
-      // 🔥 RANGE PRIORITY
-      if (range.trim() !== "") {
-        finalPages = parseRanges(range)
-      }
-
-      // 🔥 SORT (IMPORTANT)
-      finalPages = finalPages.sort((a, b) => a - b)
+      const finalPages = getFinalPages()
 
       for (let i of finalPages) {
         if (i < 0 || i >= pdf.getPageCount()) continue
@@ -133,10 +167,7 @@ export default function Page() {
       const zipBlob = await zip.generateAsync({ type: "blob" })
       const url = URL.createObjectURL(zipBlob)
 
-      const a = document.createElement("a")
-      a.href = url
-      a.download = "split.zip"
-      a.click()
+      window.open(url)
 
       await supabase.from("files").insert([
         {
@@ -147,7 +178,52 @@ export default function Page() {
         }
       ])
 
-      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+      alert("Error ❌")
+    }
+
+    setLoading(false)
+  }
+
+  // 🔥 PDF DOWNLOAD
+  const handleDownloadPDF = async () => {
+    if (!file) return alert("Upload PDF 😤")
+
+    const { data: userData } = await supabase.auth.getUser()
+    if (!userData?.user) {
+      alert("Login required 🔐")
+      window.location.href = "/login"
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const bytes = await file.arrayBuffer()
+      const pdf = await PDFDocument.load(bytes)
+
+      const finalPages = getFinalPages()
+
+      const newPdf = await PDFDocument.create()
+      const copied = await newPdf.copyPages(pdf, finalPages)
+
+      copied.forEach(p => newPdf.addPage(p))
+
+      const pdfBytes = await newPdf.save()
+      const blob = new Blob([pdfBytes], { type: "application/pdf" })
+      const url = URL.createObjectURL(blob)
+
+      window.open(url)
+
+      await supabase.from("files").insert([
+        {
+          user_id: userData.user.id,
+          name: "split.pdf",
+          type: "split-pdf",
+          file_url: url
+        }
+      ])
 
     } catch (err) {
       console.error(err)
@@ -163,7 +239,6 @@ export default function Page() {
 
       <input type="file" accept="application/pdf" onChange={handleFile} />
 
-      {/* 🔥 RANGE INPUT */}
       <input
         type="text"
         placeholder="Range: 1-3,5,8"
@@ -190,8 +265,46 @@ export default function Page() {
         ))}
       </div>
 
+      <button onClick={handlePreview} style={btn}>
+        Preview Split 👀
+      </button>
+
+      {/* 🔥 PREVIEW UI */}
+      {previewPages.length > 0 && (
+        <div style={{ marginTop: "20px" }}>
+          <h3>Preview (Drag + Remove):</h3>
+
+          <div style={grid}>
+            {previewPages.map((p, index) => (
+              <div
+                key={index}
+                style={box}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDrop(index)}
+              >
+                <img src={images[p]} style={{ width: "100%" }} />
+                <p>Page {p + 1}</p>
+
+                <button
+                  onClick={() => removePreviewPage(index)}
+                  style={{ background: "red", color: "#fff", marginTop: "5px" }}
+                >
+                  ❌ Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <button onClick={handleSplit} style={btn}>
         {loading ? "Processing..." : "Download ZIP 🔥"}
+      </button>
+
+      <button onClick={handleDownloadPDF} style={btn}>
+        Download PDF 📄
       </button>
     </main>
   )
@@ -225,5 +338,6 @@ const btn = {
   padding: "12px",
   background: "#22c55e",
   border: "none",
-  borderRadius: "8px"
-      }
+  borderRadius: "8px",
+  marginTop: "10px"
+                   }
