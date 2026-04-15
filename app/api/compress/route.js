@@ -3,17 +3,22 @@ import { NextResponse } from "next/server"
 export async function POST(req) {
   try {
     const { searchParams } = new URL(req.url)
-
     const level = searchParams.get("level") || "medium"
 
     const apiKey = process.env.CLOUDCONVERT_API_KEY
 
-    // 🔥 LEVEL → QUALITY MAP
-    let quality = "screen" // default medium
+    // 🔥 PRO LEVEL MAPPING (CORRECT)
+    let profile = "ebook" // default
 
-    if (level === "low") quality = "ebook"      // high quality
-    if (level === "medium") quality = "screen"  // balanced
-    if (level === "high") quality = "printer"   // max compression
+    if (level === "low") {
+      profile = "prepress"   // 🔥 BEST QUALITY (least compression)
+    } 
+    else if (level === "medium") {
+      profile = "ebook"      // 🔥 BALANCED
+    } 
+    else if (level === "high") {
+      profile = "screen"     // 🔥 MAX COMPRESSION (small size)
+    }
 
     const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
       method: "POST",
@@ -26,11 +31,15 @@ export async function POST(req) {
           "import-file": {
             operation: "import/upload"
           },
+
+          // 🔥 MAIN FIX HERE
           "compress-file": {
             operation: "optimize",
             input: "import-file",
-            profile: quality // 🔥 IMPORTANT CHANGE
+            engine: "ghostscript",   // ✅ MUST
+            profile: profile         // ✅ LEVEL BASED
           },
+
           "export-file": {
             operation: "export/url",
             input: "compress-file"
@@ -41,9 +50,11 @@ export async function POST(req) {
 
     const jobData = await jobRes.json()
 
-    if (!jobData?.data) {
+    // 🔥 ERROR SAFETY
+    if (!jobData?.data?.tasks) {
+      console.error("CloudConvert Error:", jobData)
       return NextResponse.json(
-        { error: "CloudConvert error" },
+        { error: "CloudConvert failed" },
         { status: 500 }
       )
     }
@@ -51,6 +62,13 @@ export async function POST(req) {
     const uploadTask = jobData.data.tasks.find(
       (t) => t.name === "import-file"
     )
+
+    if (!uploadTask?.result?.form) {
+      return NextResponse.json(
+        { error: "Upload task error" },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       uploadUrl: uploadTask.result.form.url,
