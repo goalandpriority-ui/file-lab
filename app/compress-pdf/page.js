@@ -8,11 +8,20 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState("")
   const [status, setStatus] = useState("")
+  const [level, setLevel] = useState("medium") // 🔥 NEW
+  const [beforeSize, setBeforeSize] = useState(null) // 🔥 NEW
+  const [afterSize, setAfterSize] = useState(null) // 🔥 NEW
+
+  // 🔥 FORMAT SIZE
+  const formatSize = (bytes) => {
+    if (!bytes) return ""
+    const mb = bytes / (1024 * 1024)
+    return mb.toFixed(2) + " MB"
+  }
 
   const handleConvert = async () => {
     if (!file) return alert("Select PDF")
 
-    // 🔥 CHECK LOGIN
     const { data: userData } = await supabase.auth.getUser()
 
     if (!userData?.user) {
@@ -24,9 +33,14 @@ export default function Page() {
     setLoading(true)
     setStatus("Preparing...")
     setDownloadUrl("")
+    setAfterSize(null)
+
+    // 🔥 SAVE ORIGINAL SIZE
+    setBeforeSize(file.size)
 
     try {
-      const res = await fetch("/api/convert?type=compress-pdf", {
+      // 🔥 SEND LEVEL TO API
+      const res = await fetch(`/api/convert?type=compress-pdf&level=${level}`, {
         method: "POST"
       })
 
@@ -54,7 +68,13 @@ export default function Page() {
           setDownloadUrl(data.url)
           setStatus("Done ✅")
 
-          // 🔥 SAVE TO DATABASE
+          // 🔥 FETCH COMPRESSED FILE SIZE
+          try {
+            const head = await fetch(data.url, { method: "HEAD" })
+            const size = head.headers.get("content-length")
+            if (size) setAfterSize(Number(size))
+          } catch {}
+
           await supabase.from("files").insert([
             {
               user_id: userData.user.id,
@@ -74,13 +94,39 @@ export default function Page() {
 
   return (
     <main style={layout}>
-      <h1>Compress PDF</h1>
+      <h1>Compress PDF 🔥</h1>
 
       <input 
         type="file" 
         accept="application/pdf"
-        onChange={(e)=>setFile(e.target.files[0])}
+        onChange={(e)=>{
+          const f = e.target.files[0]
+          setFile(f)
+          if (f) setBeforeSize(f.size)
+        }}
       />
+
+      {/* 🔥 COMPRESSION LEVEL */}
+      <select 
+        value={level} 
+        onChange={(e)=>setLevel(e.target.value)}
+        style={select}
+      >
+        <option value="low">Low Compression (High Quality)</option>
+        <option value="medium">Medium (Balanced)</option>
+        <option value="high">High Compression (Small Size)</option>
+      </select>
+
+      {/* 🔥 SIZE DISPLAY */}
+      {beforeSize && (
+        <p>Before: {formatSize(beforeSize)}</p>
+      )}
+
+      {afterSize && (
+        <p style={{ color:"#22c55e" }}>
+          After: {formatSize(afterSize)} 🚀
+        </p>
+      )}
 
       <button 
         onClick={handleConvert}
@@ -100,7 +146,7 @@ export default function Page() {
   )
 }
 
-// 🔥 STYLES
+// 🎨 STYLES
 
 const layout = {
   display:"flex",
@@ -125,3 +171,8 @@ const link = {
   color:"#22c55e",
   fontWeight:"bold"
 }
+
+const select = {
+  padding:"10px",
+  borderRadius:"8px"
+    }
