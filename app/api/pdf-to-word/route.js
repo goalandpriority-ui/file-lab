@@ -30,7 +30,7 @@ export async function POST(req) {
     const tokenData = JSON.parse(await tokenRes.text())
 
     if (!tokenData.access_token) {
-      return NextResponse.json({ error: "Token failed", tokenData })
+      return NextResponse.json({ error: "❌ Token failed", tokenData })
     }
 
     const accessToken = tokenData.access_token
@@ -43,6 +43,7 @@ export async function POST(req) {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "x-api-key": process.env.ADOBE_CLIENT_ID,
+        "x-gw-ims-org-id": process.env.ADOBE_ORG_ID, // 🔥 IMPORTANT
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -53,7 +54,7 @@ export async function POST(req) {
     const uploadData = JSON.parse(await uploadRes.text())
 
     if (!uploadData.uploadUri) {
-      return NextResponse.json({ error: "Upload init failed", uploadData })
+      return NextResponse.json({ error: "❌ Upload init failed", uploadData })
     }
 
     /* =========================
@@ -68,17 +69,18 @@ export async function POST(req) {
     })
 
     if (!putRes.ok) {
-      return NextResponse.json({ error: "Upload failed" })
+      return NextResponse.json({ error: "❌ Upload failed" })
     }
 
     /* =========================
-       🔥 4. CREATE JOB (FINAL FIX ✅)
+       🔥 4. CREATE JOB
     ========================= */
     const jobRes = await fetch("https://pdf-services.adobe.io/operation/exportpdf", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "x-api-key": process.env.ADOBE_CLIENT_ID,
+        "x-gw-ims-org-id": process.env.ADOBE_ORG_ID, // 🔥 MUST
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -94,7 +96,7 @@ export async function POST(req) {
     const jobData = JSON.parse(await jobRes.text())
 
     if (!jobData._links?.self?.href) {
-      return NextResponse.json({ error: "Job failed", jobData })
+      return NextResponse.json({ error: "❌ Job failed", jobData })
     }
 
     const statusUrl = jobData._links.self.href
@@ -110,7 +112,8 @@ export async function POST(req) {
       const statusRes = await fetch(statusUrl, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "x-api-key": process.env.ADOBE_CLIENT_ID
+          "x-api-key": process.env.ADOBE_CLIENT_ID,
+          "x-gw-ims-org-id": process.env.ADOBE_ORG_ID // 🔥 MUST
         }
       })
 
@@ -125,7 +128,10 @@ export async function POST(req) {
     const downloadUrl = resultData?.outputs?.[0]?.asset?.downloadUri
 
     if (!downloadUrl) {
-      return NextResponse.json({ error: "Conversion failed", resultData })
+      return NextResponse.json({
+        error: "❌ Conversion failed",
+        resultData
+      })
     }
 
     /* =========================
@@ -145,7 +151,8 @@ export async function POST(req) {
 
   } catch (err) {
     return NextResponse.json({
-      error: err.message
+      error: "🔥 Server crash",
+      details: err.message
     })
   }
 }
