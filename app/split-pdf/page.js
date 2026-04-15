@@ -15,8 +15,28 @@ export default function Page() {
   const [selected, setSelected] = useState([])
   const [images, setImages] = useState([])
   const [loading, setLoading] = useState(false)
+  const [range, setRange] = useState("") // 🔥 NEW
 
-  // 🔥 LOAD + THUMBNAIL
+  // 🔥 RANGE PARSER
+  const parseRanges = (input) => {
+    const parts = input.split(",")
+    let result = []
+
+    for (let part of parts) {
+      if (part.includes("-")) {
+        let [start, end] = part.split("-").map(Number)
+        for (let i = start; i <= end; i++) {
+          result.push(i - 1)
+        }
+      } else {
+        result.push(Number(part) - 1)
+      }
+    }
+
+    return [...new Set(result)]
+  }
+
+  // 🔥 LOAD PDF + THUMBNAIL
   const handleFile = async (e) => {
     const f = e.target.files[0]
     if (!f) return
@@ -24,8 +44,8 @@ export default function Page() {
     setFile(f)
 
     const bytes = await f.arrayBuffer()
-
     const pdf = await PDFDocument.load(bytes)
+
     const total = pdf.getPageCount()
     const pageArr = Array.from({ length: total }, (_, i) => i)
 
@@ -33,7 +53,6 @@ export default function Page() {
     setSelected(pageArr)
 
     const pdfjs = await pdfjsLib.getDocument({ data: bytes }).promise
-
     const imgs = []
 
     for (let i = 1; i <= pdfjs.numPages; i++) {
@@ -46,11 +65,7 @@ export default function Page() {
       canvas.width = viewport.width
       canvas.height = viewport.height
 
-      await page.render({
-        canvasContext: context,
-        viewport
-      }).promise
-
+      await page.render({ canvasContext: context, viewport }).promise
       imgs.push(canvas.toDataURL())
     }
 
@@ -66,7 +81,7 @@ export default function Page() {
     }
   }
 
-  // 🔥 REORDER
+  // 🔥 MOVE
   const move = (i, dir) => {
     const arr = [...pages]
     const target = i + dir
@@ -76,13 +91,11 @@ export default function Page() {
     setPages(arr)
   }
 
-  // 🔥 SPLIT
+  // 🔥 SPLIT (UPDATED)
   const handleSplit = async () => {
-    if (!file) return alert("Upload PDF")
+    if (!file) return alert("Upload PDF da macha 😤")
 
-    // 🔥 LOGIN CHECK
     const { data: userData } = await supabase.auth.getUser()
-
     if (!userData?.user) {
       alert("Login required 🔐")
       window.location.href = "/login"
@@ -94,28 +107,37 @@ export default function Page() {
     try {
       const bytes = await file.arrayBuffer()
       const pdf = await PDFDocument.load(bytes)
-
       const zip = new JSZip()
 
-      for (let i of selected) {
+      let finalPages = selected
+
+      // 🔥 RANGE PRIORITY
+      if (range.trim() !== "") {
+        finalPages = parseRanges(range)
+      }
+
+      // 🔥 SORT (IMPORTANT)
+      finalPages = finalPages.sort((a, b) => a - b)
+
+      for (let i of finalPages) {
+        if (i < 0 || i >= pdf.getPageCount()) continue
+
         const newPdf = await PDFDocument.create()
         const [page] = await newPdf.copyPages(pdf, [i])
         newPdf.addPage(page)
 
         const bytes = await newPdf.save()
-        zip.file(`page-${i+1}.pdf`, bytes)
+        zip.file(`page-${i + 1}.pdf`, bytes)
       }
 
       const zipBlob = await zip.generateAsync({ type: "blob" })
       const url = URL.createObjectURL(zipBlob)
 
-      // 🔥 DOWNLOAD
       const a = document.createElement("a")
       a.href = url
       a.download = "split.zip"
       a.click()
 
-      // 🔥 SAVE TO DATABASE
       await supabase.from("files").insert([
         {
           user_id: userData.user.id,
@@ -141,23 +163,29 @@ export default function Page() {
 
       <input type="file" accept="application/pdf" onChange={handleFile} />
 
+      {/* 🔥 RANGE INPUT */}
+      <input
+        type="text"
+        placeholder="Range: 1-3,5,8"
+        value={range}
+        onChange={(e) => setRange(e.target.value)}
+        style={{ padding: "10px", borderRadius: "8px" }}
+      />
+
       <div style={grid}>
         {pages.map((p, idx) => (
           <div key={p} style={box}>
-            
-            <img src={images[p]} style={{width:"100%"}} />
+            <img src={images[p]} style={{ width: "100%" }} />
+            <p>Page {p + 1}</p>
 
-            <p>Page {p+1}</p>
-
-            <button onClick={()=>togglePage(p)}>
+            <button onClick={() => togglePage(p)}>
               {selected.includes(p) ? "Selected" : "Select"}
             </button>
 
             <div>
-              <button onClick={()=>move(idx,-1)}>⬆️</button>
-              <button onClick={()=>move(idx,1)}>⬇️</button>
+              <button onClick={() => move(idx, -1)}>⬆️</button>
+              <button onClick={() => move(idx, 1)}>⬇️</button>
             </div>
-
           </div>
         ))}
       </div>
@@ -169,33 +197,33 @@ export default function Page() {
   )
 }
 
-// 🔥 STYLES
+// 🎨 STYLES
 
 const layout = {
-  display:"flex",
-  flexDirection:"column",
-  alignItems:"center",
-  gap:"20px",
-  background:"#020617",
-  color:"#fff",
-  padding:"20px"
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: "20px",
+  background: "#020617",
+  color: "#fff",
+  padding: "20px"
 }
 
 const grid = {
-  display:"grid",
-  gridTemplateColumns:"repeat(2,1fr)",
-  gap:"10px"
+  display: "grid",
+  gridTemplateColumns: "repeat(2,1fr)",
+  gap: "10px"
 }
 
 const box = {
-  padding:"10px",
-  background:"#111",
-  borderRadius:"8px"
+  padding: "10px",
+  background: "#111",
+  borderRadius: "8px"
 }
 
 const btn = {
-  padding:"12px",
-  background:"#22c55e",
-  border:"none",
-  borderRadius:"8px"
-}
+  padding: "12px",
+  background: "#22c55e",
+  border: "none",
+  borderRadius: "8px"
+      }
