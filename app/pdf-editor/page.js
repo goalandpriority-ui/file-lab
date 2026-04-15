@@ -3,9 +3,6 @@
 import { useState, useRef, useEffect } from "react"
 import * as pdfjsLib from "pdfjs-dist/build/pdf"
 import "pdfjs-dist/build/pdf.worker.entry"
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
-import Draggable from "react-draggable"
-import Tesseract from "tesseract.js"
 
 export default function Page() {
 
@@ -13,12 +10,7 @@ export default function Page() {
   const [pageIndex, setPageIndex] = useState(0)
   const [scale, setScale] = useState(1.2)
 
-  const [texts, setTexts] = useState([])
-  const [mode, setMode] = useState("text")
-
-  const [findText, setFindText] = useState("")
-  const [replaceText, setReplaceText] = useState("")
-
+  const [docUrl, setDocUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState("")
 
@@ -29,17 +21,11 @@ export default function Page() {
     const f = e.target.files[0]
     if (!f) return
 
-    setLoading(true)
-    setStatus("Rendering PDF...")
-
     setFile(f)
-    await renderPage(f, 0)
-
-    setLoading(false)
-    setStatus("")
+    renderPage(f, 0)
   }
 
-  // 🔥 RENDER
+  // 🔥 RENDER PDF
   const renderPage = async (fileObj, pageNum) => {
     const bytes = await fileObj.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
@@ -60,74 +46,49 @@ export default function Page() {
     if (file) renderPage(file, pageIndex)
   }, [pageIndex, scale])
 
-  // 🔥 OCR
-  const runOCR = async () => {
-    const canvas = canvasRef.current
+  // 🔥 ADOBE CONVERT → WORD
+  const handleConvert = async () => {
+    if (!file) return alert("Upload PDF")
 
     setLoading(true)
-    setStatus("🤖 AI analyzing document...")
+    setStatus("🤖 Converting to editable format...")
 
-    const { data } = await Tesseract.recognize(canvas, "eng")
+    const form = new FormData()
+    form.append("file", file)
 
-    setStatus("🧠 Detecting text layers...")
-
-    const words = data.words.map(w => ({
-      x: w.bbox.x0,
-      y: w.bbox.y0,
-      text: w.text,
-      size: w.bbox.y1 - w.bbox.y0,
-      color: "#ff0000",
-      page: pageIndex
-    }))
-
-    setTexts(words)
-
-    setLoading(false)
-    setStatus("✅ AI processing complete")
-    setTimeout(()=>setStatus(""),2000)
-  }
-
-  // 🔥 REPLACE
-  const handleReplace = () => {
-    if (!findText) return
-
-    const updated = texts.map(t => ({
-      ...t,
-      text: t.text.toLowerCase().includes(findText.toLowerCase())
-        ? replaceText
-        : t.text
-    }))
-
-    setTexts(updated)
-  }
-
-  // 🔥 SAVE
-  const handleDownload = async () => {
-    if (!file) return
-
-    setLoading(true)
-    setStatus("💾 Generating PDF...")
-
-    const bytes = await file.arrayBuffer()
-    const pdfDoc = await PDFDocument.load(bytes)
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-
-    const page = pdfDoc.getPages()[pageIndex]
-
-    texts.forEach((t) => {
-      page.drawText(t.text, {
-        x: t.x,
-        y: t.y,
-        size: t.size || 14,
-        font,
-        color: rgb(1, 0, 0)
-      })
+    const res = await fetch("/api/pdf-to-word", {
+      method: "POST",
+      body: form
     })
 
-    const pdfBytes = await pdfDoc.save()
-
-    const blob = new Blob([pdfBytes], { type: "application/pdf" })
+    const blob = await res.blob()
     const url = URL.createObjectURL(blob)
+
+    setDocUrl(url)
+
+    setLoading(false)
+    setStatus("✅ Editable document ready")
+  }
+
+  // 🔥 DOWNLOAD FINAL PDF
+  const handleDownload = async () => {
+    if (!docUrl) return
+
+    setLoading(true)
+    setStatus("💾 Converting back to PDF...")
+
+    const fileBlob = await fetch(docUrl).then(r => r.blob())
+
+    const form = new FormData()
+    form.append("file", fileBlob, "edited.docx")
+
+    const res = await fetch("/api/word-to-pdf", {
+      method: "POST",
+      body: form
+    })
+
+    const pdfBlob = await res.blob()
+    const url = URL.createObjectURL(pdfBlob)
 
     const a = document.createElement("a")
     a.href = url
@@ -142,11 +103,13 @@ export default function Page() {
   return (
     <main style={main}>
 
-      {/* 🔥 TOP BAR */}
+      {/* 🔥 TOOLBAR */}
       <div style={toolbar}>
         <input type="file" onChange={handleFile} />
 
-        <button style={btn} onClick={runOCR}>🧠 OCR</button>
+        <button style={btn} onClick={handleConvert}>
+          ✨ Make Editable
+        </button>
 
         <button style={btn} onClick={()=>setScale(s=>s+0.2)}>➕</button>
         <button style={btn} onClick={()=>setScale(s=>Math.max(1,s-0.2))}>➖</button>
@@ -154,10 +117,12 @@ export default function Page() {
         <button style={btn} onClick={()=>setPageIndex(p=>Math.max(0,p-1))}>Prev</button>
         <button style={btn} onClick={()=>setPageIndex(p=>p+1)}>Next</button>
 
-        <button style={btn} onClick={handleDownload}>💾 Save</button>
+        <button style={btn} onClick={handleDownload}>
+          💾 Save
+        </button>
       </div>
 
-      {/* 🔥 STATUS */}
+      {/* 🔥 LOADING */}
       {loading && (
         <div style={loaderBox}>
           <div style={spinner}></div>
@@ -165,46 +130,27 @@ export default function Page() {
         </div>
       )}
 
-      {/* 🔥 AI BAR */}
-      <div style={aiBar}>
-        <input
-          placeholder="Find text"
-          value={findText}
-          onChange={(e)=>setFindText(e.target.value)}
-        />
-        <input
-          placeholder="Replace with"
-          value={replaceText}
-          onChange={(e)=>setReplaceText(e.target.value)}
-        />
-        <button style={btn} onClick={handleReplace}>⚡ Replace</button>
-      </div>
-
       {/* 🔥 VIEW */}
       <div style={viewer}>
-        <canvas ref={canvasRef} style={{background:"#fff"}} />
 
-        {texts.map((t, i) => (
-          <Draggable key={i}>
-            <input
-              value={t.text}
-              onChange={(e)=>{
-                const updated=[...texts]
-                updated[i].text=e.target.value
-                setTexts(updated)
-              }}
-              style={{
-                position:"absolute",
-                top:t.y,
-                left:t.x,
-                fontSize:t.size,
-                color:"red",
-                background:"transparent",
-                border:"none"
-              }}
-            />
-          </Draggable>
-        ))}
+        {/* ORIGINAL PDF */}
+        {!docUrl && (
+          <canvas ref={canvasRef} style={{background:"#fff"}} />
+        )}
+
+        {/* EDITABLE WORD VIEW */}
+        {docUrl && (
+          <iframe
+            src={docUrl}
+            style={{
+              width:"80%",
+              height:"600px",
+              border:"none",
+              background:"#fff"
+            }}
+          />
+        )}
+
       </div>
 
     </main>
@@ -236,15 +182,7 @@ const btn = {
   cursor:"pointer"
 }
 
-const aiBar = {
-  padding:"10px",
-  background:"#0f172a",
-  display:"flex",
-  gap:"10px"
-}
-
 const viewer = {
-  position:"relative",
   display:"flex",
   justifyContent:"center",
   marginTop:"10px"
@@ -264,4 +202,4 @@ const spinner = {
   borderTop:"4px solid transparent",
   borderRadius:"50%",
   animation:"spin 1s linear infinite"
-  }
+}
