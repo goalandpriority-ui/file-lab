@@ -8,9 +8,9 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState("")
   const [status, setStatus] = useState("")
-  const [level, setLevel] = useState("medium") // 🔥 NEW
-  const [beforeSize, setBeforeSize] = useState(null) // 🔥 NEW
-  const [afterSize, setAfterSize] = useState(null) // 🔥 NEW
+  const [level, setLevel] = useState("medium")
+  const [beforeSize, setBeforeSize] = useState(null)
+  const [afterSize, setAfterSize] = useState(null)
 
   // 🔥 FORMAT SIZE
   const formatSize = (bytes) => {
@@ -19,8 +19,14 @@ export default function Page() {
     return mb.toFixed(2) + " MB"
   }
 
+  // 🔥 % SAVED
+  const getSavedPercent = () => {
+    if (!beforeSize || !afterSize) return null
+    return ((beforeSize - afterSize) / beforeSize * 100).toFixed(1)
+  }
+
   const handleConvert = async () => {
-    if (!file) return alert("Select PDF")
+    if (!file) return alert("Select PDF 😤")
 
     const { data: userData } = await supabase.auth.getUser()
 
@@ -35,11 +41,10 @@ export default function Page() {
     setDownloadUrl("")
     setAfterSize(null)
 
-    // 🔥 SAVE ORIGINAL SIZE
     setBeforeSize(file.size)
 
     try {
-      // 🔥 SEND LEVEL TO API
+      // 🔥 CREATE JOB WITH LEVEL
       const res = await fetch(`/api/convert?type=compress-pdf&level=${level}`, {
         method: "POST"
       })
@@ -64,16 +69,17 @@ export default function Page() {
 
         if (data.done) {
           clearInterval(interval)
-          setLoading(false)
-          setDownloadUrl(data.url)
-          setStatus("Done ✅")
 
-          // 🔥 FETCH COMPRESSED FILE SIZE
-          try {
-            const head = await fetch(data.url, { method: "HEAD" })
-            const size = head.headers.get("content-length")
-            if (size) setAfterSize(Number(size))
-          } catch {}
+          setStatus("Finalizing...")
+
+          // 🔥 GET FINAL FILE SIZE (FIXED)
+          const resFile = await fetch(data.url)
+          const blob = await resFile.blob()
+
+          setAfterSize(blob.size)
+          setDownloadUrl(data.url)
+          setLoading(false)
+          setStatus("Done ✅")
 
           await supabase.from("files").insert([
             {
@@ -96,39 +102,46 @@ export default function Page() {
     <main style={layout}>
       <h1>Compress PDF 🔥</h1>
 
-      <input 
-        type="file" 
+      <input
+        type="file"
         accept="application/pdf"
-        onChange={(e)=>{
+        onChange={(e) => {
           const f = e.target.files[0]
           setFile(f)
           if (f) setBeforeSize(f.size)
         }}
       />
 
-      {/* 🔥 COMPRESSION LEVEL */}
-      <select 
-        value={level} 
-        onChange={(e)=>setLevel(e.target.value)}
+      {/* 🔥 LEVEL SELECT */}
+      <select
+        value={level}
+        onChange={(e) => setLevel(e.target.value)}
         style={select}
       >
-        <option value="low">Low Compression (High Quality)</option>
+        <option value="low">Low (High Quality)</option>
         <option value="medium">Medium (Balanced)</option>
-        <option value="high">High Compression (Small Size)</option>
+        <option value="high">High (Small Size)</option>
       </select>
 
-      {/* 🔥 SIZE DISPLAY */}
+      {/* 🔥 SIZE INFO */}
       {beforeSize && (
         <p>Before: {formatSize(beforeSize)}</p>
       )}
 
       {afterSize && (
-        <p style={{ color:"#22c55e" }}>
-          After: {formatSize(afterSize)} 🚀
+        <p style={{ color: "#22c55e" }}>
+          After: {formatSize(afterSize)}
         </p>
       )}
 
-      <button 
+      {/* 🔥 % SAVED */}
+      {beforeSize && afterSize && (
+        <p style={{ color: "#22c55e", fontWeight: "bold" }}>
+          Saved: {getSavedPercent()}% 🚀
+        </p>
+      )}
+
+      <button
         onClick={handleConvert}
         disabled={loading}
         style={btn}
@@ -141,7 +154,6 @@ export default function Page() {
           Download 🔥
         </a>
       )}
-
     </main>
   )
 }
@@ -149,30 +161,30 @@ export default function Page() {
 // 🎨 STYLES
 
 const layout = {
-  display:"flex",
-  flexDirection:"column",
-  alignItems:"center",
-  justifyContent:"center",
-  height:"100vh",
-  gap:"20px",
-  background:"#020617",
-  color:"#fff"
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "100vh",
+  gap: "20px",
+  background: "#020617",
+  color: "#fff"
 }
 
 const btn = {
-  padding:"12px 20px",
-  background:"#22c55e",
-  border:"none",
-  borderRadius:"8px",
-  fontWeight:"bold"
+  padding: "12px 20px",
+  background: "#22c55e",
+  border: "none",
+  borderRadius: "8px",
+  fontWeight: "bold"
 }
 
 const link = {
-  color:"#22c55e",
-  fontWeight:"bold"
+  color: "#22c55e",
+  fontWeight: "bold"
 }
 
 const select = {
-  padding:"10px",
-  borderRadius:"8px"
-    }
+  padding: "10px",
+  borderRadius: "8px"
+  }
