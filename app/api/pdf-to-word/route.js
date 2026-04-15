@@ -43,7 +43,7 @@ export async function POST(req) {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "x-api-key": process.env.ADOBE_CLIENT_ID,
-        "x-gw-ims-org-id": process.env.ADOBE_ORG_ID, // 🔥 IMPORTANT
+        "x-gw-ims-org-id": process.env.ADOBE_ORG_ID,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -73,23 +73,20 @@ export async function POST(req) {
     }
 
     /* =========================
-       🔥 4. CREATE JOB
+       🔥 4. CREATE JOB (FINAL FIX 💯)
     ========================= */
     const jobRes = await fetch("https://pdf-services.adobe.io/operation/exportpdf", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "x-api-key": process.env.ADOBE_CLIENT_ID,
-        "x-gw-ims-org-id": process.env.ADOBE_ORG_ID, // 🔥 MUST
-        "Content-Type": "application/json"
+        "x-gw-ims-org-id": process.env.ADOBE_ORG_ID,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
       },
       body: JSON.stringify({
-        input: {
-          assetID: uploadData.assetID
-        },
-        params: {
-          targetFormat: "docx"
-        }
+        assetID: uploadData.assetID,
+        targetFormat: "docx"
       })
     })
 
@@ -113,7 +110,7 @@ export async function POST(req) {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "x-api-key": process.env.ADOBE_CLIENT_ID,
-          "x-gw-ims-org-id": process.env.ADOBE_ORG_ID // 🔥 MUST
+          "x-gw-ims-org-id": process.env.ADOBE_ORG_ID
         }
       })
 
@@ -125,7 +122,7 @@ export async function POST(req) {
     /* =========================
        🔥 6. DOWNLOAD URL
     ========================= */
-    const downloadUrl = resultData?.outputs?.[0]?.asset?.downloadUri
+    const downloadUrl = resultData?.asset?.downloadUri
 
     if (!downloadUrl) {
       return NextResponse.json({
