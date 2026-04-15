@@ -17,7 +17,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [range, setRange] = useState("")
   const [previewPages, setPreviewPages] = useState([])
-  const [dragIndex, setDragIndex] = useState(null) // 🔥 NEW
+  const [dragIndex, setDragIndex] = useState(null)
 
   // ✅ RANGE PARSER
   const parseRanges = (input) => {
@@ -109,17 +109,16 @@ export default function Page() {
     setPreviewPages(finalPages)
   }
 
-  // ❌ REMOVE PAGE
+  // ❌ REMOVE
   const removePreviewPage = (index) => {
     setPreviewPages(previewPages.filter((_, i) => i !== index))
   }
 
-  // 🧠 DRAG START
+  // 🧠 DRAG
   const handleDragStart = (index) => {
     setDragIndex(index)
   }
 
-  // 🧠 DROP
   const handleDrop = (index) => {
     if (dragIndex === null) return
 
@@ -133,7 +132,22 @@ export default function Page() {
     setDragIndex(null)
   }
 
-  // 🔥 ZIP DOWNLOAD
+  // 🔥 DOWNLOAD HELPER (FIX)
+  const forceDownload = (url, filename) => {
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+
+    if (typeof a.download === "undefined") {
+      window.open(url)
+    } else {
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }
+
+  // 🔥 ZIP
   const handleSplit = async () => {
     if (!file) return alert("Upload PDF 😤")
 
@@ -167,7 +181,7 @@ export default function Page() {
       const zipBlob = await zip.generateAsync({ type: "blob" })
       const url = URL.createObjectURL(zipBlob)
 
-      window.open(url)
+      forceDownload(url, "split.zip")
 
       await supabase.from("files").insert([
         {
@@ -186,7 +200,7 @@ export default function Page() {
     setLoading(false)
   }
 
-  // 🔥 PDF DOWNLOAD
+  // 🔥 PDF
   const handleDownloadPDF = async () => {
     if (!file) return alert("Upload PDF 😤")
 
@@ -214,7 +228,7 @@ export default function Page() {
       const blob = new Blob([pdfBytes], { type: "application/pdf" })
       const url = URL.createObjectURL(blob)
 
-      window.open(url)
+      forceDownload(url, "split.pdf")
 
       await supabase.from("files").insert([
         {
@@ -269,7 +283,6 @@ export default function Page() {
         Preview Split 👀
       </button>
 
-      {/* 🔥 PREVIEW UI */}
       {previewPages.length > 0 && (
         <div style={{ marginTop: "20px" }}>
           <h3>Preview (Drag + Remove):</h3>
@@ -310,8 +323,6 @@ export default function Page() {
   )
 }
 
-// 🎨 STYLES
-
 const layout = {
   display: "flex",
   flexDirection: "column",
@@ -340,4 +351,4 @@ const btn = {
   border: "none",
   borderRadius: "8px",
   marginTop: "10px"
-                   }
+        }
