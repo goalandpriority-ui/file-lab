@@ -20,8 +20,6 @@ export async function POST(req) {
             operation: "optimize",
             input: "import-file",
             engine: "ghostscript",
-
-            // 🔥 VERY STRONG SETTINGS
             profile: "screen",
             dpi: 50,
             flatten: true,
