@@ -14,6 +14,9 @@ export default function Page() {
   const [progress, setProgress] = useState(0)
   const [downloadUrl, setDownloadUrl] = useState("")
 
+  // =========================
+  // 🔥 MODE
+  // =========================
   const getMode = () => {
     if (!file) return
     if (file.size < 3 * 1024 * 1024) return "local"
@@ -21,7 +24,7 @@ export default function Page() {
   }
 
   // =========================
-  // ⚡ LOCAL
+  // ⚡ LOCAL COMPRESS (SAFE)
   // =========================
   const handleLocal = async () => {
     const bytes = await file.arrayBuffer()
@@ -63,14 +66,15 @@ export default function Page() {
   }
 
   // =========================
-  // 🚀 SERVER
+  // 🚀 SERVER COMPRESS (FIXED)
   // =========================
   const handleServer = async () => {
-    const res = await fetch("/api/compress", {
-      method: "POST"
-    })
+    const res = await fetch("/api/compress", { method: "POST" })
+    const dataInit = await res.json()
 
-    const { uploadUrl, uploadParams, jobId } = await res.json()
+    if (!dataInit?.uploadUrl) throw new Error("Init failed")
+
+    const { uploadUrl, uploadParams, jobId } = dataInit
 
     const form = new FormData()
     Object.keys(uploadParams).forEach(k => {
@@ -86,17 +90,34 @@ export default function Page() {
       const interval = setInterval(async () => {
         tries++
 
-        const res = await fetch(`/api/status?jobId=${jobId}`)
-        const data = await res.json()
+        try {
+          const res = await fetch(`/api/status?jobId=${jobId}`)
+          const data = await res.json()
 
-        if (data.error || tries > 30) {
-          clearInterval(interval)
-          reject("Compression failed")
-        }
+          // ❌ FAIL
+          if (data.error) {
+            clearInterval(interval)
+            reject("Compression failed")
+          }
 
-        if (data.done) {
+          // ⏱ TIMEOUT
+          if (tries > 40) {
+            clearInterval(interval)
+            reject("Timeout")
+          }
+
+          // ✅ DONE
+          if (data.done) {
+            clearInterval(interval)
+            resolve(data.url)
+          }
+
+          // 🔥 FAKE PROGRESS (smooth UX)
+          setProgress(prev => (prev < 90 ? prev + 2 : prev))
+
+        } catch (e) {
           clearInterval(interval)
-          resolve(data.url)
+          reject("Network error")
         }
       }, 2000)
     })
@@ -107,6 +128,11 @@ export default function Page() {
   // =========================
   const handleCompress = async () => {
     if (!file) return alert("Select PDF")
+
+    // 🔥 VALIDATION
+    if (file.size > 25 * 1024 * 1024) {
+      return alert("Max 25MB allowed")
+    }
 
     const { data } = await supabase.auth.getUser()
     if (!data?.user) {
@@ -122,15 +148,17 @@ export default function Page() {
     setDownloadUrl("")
 
     try {
+      let url
+
       if (mode === "local") {
         const blob = await handleLocal()
-        const url = URL.createObjectURL(blob)
-        setDownloadUrl(url)
+        url = URL.createObjectURL(blob)
       } else {
-        const url = await handleServer()
-        setDownloadUrl(url)
+        url = await handleServer()
       }
 
+      setDownloadUrl(url)
+      setProgress(100)
       setLoading(false)
 
       await supabase.from("files").insert([
@@ -148,6 +176,9 @@ export default function Page() {
     }
   }
 
+  // =========================
+  // UI
+  // =========================
   return (
     <main style={layout}>
       <h1>Compress PDF</h1>
@@ -186,6 +217,8 @@ export default function Page() {
   )
 }
 
+// 🎨 UI
+
 const layout = {
   display: "flex",
   flexDirection: "column",
@@ -219,4 +252,4 @@ const barBg = {
 const barFill = {
   height: "10px",
   background: "#22c55e"
-}
+        }
