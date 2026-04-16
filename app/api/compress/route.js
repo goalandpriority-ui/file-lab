@@ -2,27 +2,7 @@ import { NextResponse } from "next/server"
 
 export async function POST(req) {
   try {
-    const { searchParams } = new URL(req.url)
-    const level = searchParams.get("level") || "medium"
-
     const apiKey = process.env.CLOUDCONVERT_API_KEY
-
-    // 🔥 LEVEL → PROFILE + DPI MAP
-    let profile = "ebook"
-    let dpi = 150
-
-    if (level === "low") {
-      profile = "prepress"   // high quality
-      dpi = 300
-    } 
-    else if (level === "medium") {
-      profile = "ebook"      // balanced
-      dpi = 150
-    } 
-    else if (level === "high") {
-      profile = "screen"     // max compression
-      dpi = 72
-    }
 
     const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
       method: "POST",
@@ -36,14 +16,16 @@ export async function POST(req) {
             operation: "import/upload"
           },
 
-          // 🔥 FINAL PRO COMPRESSION
           "compress-file": {
             operation: "optimize",
             input: "import-file",
             engine: "ghostscript",
-            profile: profile,
+
+            // 🔥 VERY STRONG SETTINGS
+            profile: "screen",
+            dpi: 50,
             flatten: true,
-            dpi: dpi
+            strip: true
           },
 
           "export-file": {
@@ -56,26 +38,14 @@ export async function POST(req) {
 
     const jobData = await jobRes.json()
 
-    // 🔥 DEBUG (important for errors)
     if (!jobData?.data?.tasks) {
-      console.error("CloudConvert Error:", jobData)
-      return NextResponse.json(
-        { error: "CloudConvert failed" },
-        { status: 500 }
-      )
+      console.error(jobData)
+      return NextResponse.json({ error: "Failed" }, { status: 500 })
     }
 
     const uploadTask = jobData.data.tasks.find(
       (t) => t.name === "import-file"
     )
-
-    if (!uploadTask?.result?.form) {
-      console.error("Upload Task Error:", uploadTask)
-      return NextResponse.json(
-        { error: "Upload task error" },
-        { status: 500 }
-      )
-    }
 
     return NextResponse.json({
       uploadUrl: uploadTask.result.form.url,
@@ -84,11 +54,7 @@ export async function POST(req) {
     })
 
   } catch (err) {
-    console.error("Compress API Error:", err)
-
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    )
+    console.error(err)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
