@@ -19,10 +19,14 @@ export async function GET(req) {
     const data = await res.json()
 
     const exportTask = data.data.tasks.find(
-      (t) => t.name === "export-my-file"
+      (t) => t.name === "export-file"
     )
 
-    if (exportTask && exportTask.status === "finished") {
+    if (exportTask?.status === "error") {
+      return NextResponse.json({ error: true })
+    }
+
+    if (exportTask?.status === "finished") {
       return NextResponse.json({
         done: true,
         url: exportTask.result.files[0].url
@@ -32,6 +36,7 @@ export async function GET(req) {
     return NextResponse.json({ done: false })
 
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error(err)
+    return NextResponse.json({ error: true }, { status: 500 })
   }
 }
