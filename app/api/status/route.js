@@ -18,14 +18,19 @@ export async function GET(req) {
 
     const data = await res.json()
 
+    // 🔥 DEBUG LOG
+    console.log(JSON.stringify(data, null, 2))
+
     const exportTask = data.data.tasks.find(
       (t) => t.name === "export-file"
     )
 
+    // ❌ FAILED CASE
     if (exportTask?.status === "error") {
       return NextResponse.json({ error: true })
     }
 
+    // ✅ SUCCESS
     if (exportTask?.status === "finished") {
       return NextResponse.json({
         done: true,
