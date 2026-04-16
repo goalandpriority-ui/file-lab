@@ -22,17 +22,11 @@ export default function Page() {
     return (bytes / (1024 * 1024)).toFixed(2) + " MB"
   }
 
-  const getQuality = () => {
-    if (level === "low") return 1.0
-    if (level === "medium") return 0.7
-    if (level === "high") return 0.4
-  }
-
-  const handleFile = (f) => {
-    setFile(f)
-    setBeforeSize(f.size)
-    setAfterSize(null)
-    setDownloadUrl("")
+  // 🔥 SAFE QUALITY
+  const getSettings = () => {
+    if (level === "low") return { scale: 1.2, quality: 0.9 }
+    if (level === "medium") return { scale: 1.0, quality: 0.7 }
+    if (level === "high") return { scale: 0.8, quality: 0.5 }
   }
 
   const handleCompress = async () => {
@@ -47,17 +41,20 @@ export default function Page() {
 
     setLoading(true)
     setProgress(0)
+    setDownloadUrl("")
+    setAfterSize(null)
 
     try {
       const bytes = await file.arrayBuffer()
       const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
 
       const newPdf = await PDFDocument.create()
-      const quality = getQuality()
+      const { scale, quality } = getSettings()
 
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i)
-        const viewport = page.getViewport({ scale: 1.5 })
+
+        const viewport = page.getViewport({ scale })
 
         const canvas = document.createElement("canvas")
         const context = canvas.getContext("2d")
@@ -65,12 +62,20 @@ export default function Page() {
         canvas.width = viewport.width
         canvas.height = viewport.height
 
-        await page.render({ canvasContext: context, viewport }).promise
+        await page.render({
+          canvasContext: context,
+          viewport
+        }).promise
 
+        // 🔥 MEMORY SAFE (IMPORTANT FIX)
         const imgData = canvas.toDataURL("image/jpeg", quality)
+
         const jpgImage = await newPdf.embedJpg(imgData)
 
-        const pageNew = newPdf.addPage([jpgImage.width, jpgImage.height])
+        const pageNew = newPdf.addPage([
+          jpgImage.width,
+          jpgImage.height
+        ])
 
         pageNew.drawImage(jpgImage, {
           x: 0,
@@ -78,6 +83,10 @@ export default function Page() {
           width: jpgImage.width,
           height: jpgImage.height
         })
+
+        // 🔥 FREE MEMORY
+        canvas.width = 0
+        canvas.height = 0
 
         setProgress(Math.round((i / pdf.numPages) * 100))
       }
@@ -101,7 +110,7 @@ export default function Page() {
 
     } catch (err) {
       console.error(err)
-      alert("Error")
+      alert("Compression failed ❌ (Try smaller file)")
       setLoading(false)
     }
   }
@@ -109,30 +118,18 @@ export default function Page() {
   return (
     <main style={layout}>
       <div style={card}>
-        <h1 style={{ marginBottom: "10px" }}>Compress PDF</h1>
+        <h1>Compress PDF</h1>
 
-        {/* 🔥 DRAG DROP */}
-        <div
-          style={drop}
-          onDrop={(e) => {
-            e.preventDefault()
-            handleFile(e.dataTransfer.files[0])
+        {/* ✅ SIMPLE UPLOAD */}
+        <input
+          type="file"
+          accept="application/pdf"
+          onChange={(e) => {
+            const f = e.target.files[0]
+            setFile(f)
+            if (f) setBeforeSize(f.size)
           }}
-          onDragOver={(e) => e.preventDefault()}
-        >
-          {file ? file.name : "Drag & Drop PDF or Click"}
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => handleFile(e.target.files[0])}
-            style={{ display: "none" }}
-            id="fileInput"
-          />
-        </div>
-
-        <label htmlFor="fileInput" style={uploadBtn}>
-          Choose File
-        </label>
+        />
 
         <select
           value={level}
@@ -144,10 +141,7 @@ export default function Page() {
           <option value="high">High (Small Size)</option>
         </select>
 
-        {/* 🔥 SIZE DISPLAY */}
-        {beforeSize && (
-          <p>Before: {formatSize(beforeSize)}</p>
-        )}
+        {beforeSize && <p>Before: {formatSize(beforeSize)}</p>}
 
         {afterSize && (
           <p style={{ color: "#22c55e" }}>
@@ -155,7 +149,6 @@ export default function Page() {
           </p>
         )}
 
-        {/* 🔥 PROGRESS */}
         {loading && (
           <div style={{ width: "100%" }}>
             <div style={barBg}>
@@ -179,42 +172,27 @@ export default function Page() {
   )
 }
 
-// 🎨 GLASS UI STYLES
+// 🎨 CLEAN UI
 
 const layout = {
   height: "100vh",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "linear-gradient(135deg,#020617,#0f172a)",
+  background: "#020617",
   color: "#fff"
 }
 
 const card = {
-  backdropFilter: "blur(12px)",
-  background: "rgba(255,255,255,0.05)",
-  padding: "30px",
-  borderRadius: "16px",
+  background: "#111",
+  padding: "25px",
+  borderRadius: "12px",
   width: "90%",
   maxWidth: "400px",
   display: "flex",
   flexDirection: "column",
   gap: "15px",
   alignItems: "center"
-}
-
-const drop = {
-  border: "2px dashed #444",
-  padding: "20px",
-  width: "100%",
-  textAlign: "center",
-  borderRadius: "10px",
-  cursor: "pointer"
-}
-
-const uploadBtn = {
-  cursor: "pointer",
-  color: "#22c55e"
 }
 
 const btn = {
@@ -248,4 +226,4 @@ const barFill = {
   height: "8px",
   background: "#22c55e",
   borderRadius: "10px"
-            }
+}
