@@ -13,96 +13,121 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [downloadUrl, setDownloadUrl] = useState("")
-  const [level, setLevel] = useState("medium")
-  const [beforeSize, setBeforeSize] = useState(null)
-  const [afterSize, setAfterSize] = useState(null)
+  const [mode, setMode] = useState("")
 
-  const formatSize = (bytes) => {
-    if (!bytes) return ""
-    return (bytes / (1024 * 1024)).toFixed(2) + " MB"
+  // 🔥 AUTO MODE SELECT
+  const getMode = () => {
+    if (!file) return
+    if (file.size < 5 * 1024 * 1024) return "local"
+    return "server"
   }
 
-  // 🔥 SAFE QUALITY
-  const getSettings = () => {
-    if (level === "low") return { scale: 1.2, quality: 0.9 }
-    if (level === "medium") return { scale: 1.0, quality: 0.7 }
-    if (level === "high") return { scale: 0.8, quality: 0.5 }
+  // =========================
+  // ⚡ LOCAL COMPRESS
+  // =========================
+  const handleLocal = async () => {
+    const bytes = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+
+    const newPdf = await PDFDocument.create()
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+
+      const viewport = page.getViewport({ scale: 0.8 })
+
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+
+      await page.render({ canvasContext: ctx, viewport }).promise
+
+      const img = canvas.toDataURL("image/jpeg", 0.6)
+      const jpg = await newPdf.embedJpg(img)
+
+      const p = newPdf.addPage([jpg.width, jpg.height])
+
+      p.drawImage(jpg, {
+        x: 0,
+        y: 0,
+        width: jpg.width,
+        height: jpg.height
+      })
+
+      setProgress(Math.round((i / pdf.numPages) * 100))
+    }
+
+    const pdfBytes = await newPdf.save()
+    return new Blob([pdfBytes], { type: "application/pdf" })
   }
 
+  // =========================
+  // 🚀 SERVER COMPRESS
+  // =========================
+  const handleServer = async () => {
+    const res = await fetch("/api/compress?level=high", {
+      method: "POST"
+    })
+
+    const { uploadUrl, uploadParams, jobId } = await res.json()
+
+    const form = new FormData()
+    Object.keys(uploadParams).forEach(k => {
+      form.append(k, uploadParams[k])
+    })
+    form.append("file", file)
+
+    await fetch(uploadUrl, { method: "POST", body: form })
+
+    return new Promise((resolve) => {
+      const interval = setInterval(async () => {
+        const res = await fetch(`/api/status?jobId=${jobId}`)
+        const data = await res.json()
+
+        if (data.done) {
+          clearInterval(interval)
+          resolve(data.url)
+        }
+      }, 2000)
+    })
+  }
+
+  // =========================
+  // 🔥 MAIN HANDLER
+  // =========================
   const handleCompress = async () => {
     if (!file) return alert("Select PDF")
 
-    const { data: userData } = await supabase.auth.getUser()
-    if (!userData?.user) {
+    const { data } = await supabase.auth.getUser()
+    if (!data?.user) {
       alert("Login required")
       window.location.href = "/login"
       return
     }
 
+    const selectedMode = getMode()
+    setMode(selectedMode)
     setLoading(true)
     setProgress(0)
     setDownloadUrl("")
-    setAfterSize(null)
 
     try {
-      const bytes = await file.arrayBuffer()
-      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
-
-      const newPdf = await PDFDocument.create()
-      const { scale, quality } = getSettings()
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i)
-
-        const viewport = page.getViewport({ scale })
-
-        const canvas = document.createElement("canvas")
-        const context = canvas.getContext("2d")
-
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-
-        await page.render({
-          canvasContext: context,
-          viewport
-        }).promise
-
-        // 🔥 MEMORY SAFE (IMPORTANT FIX)
-        const imgData = canvas.toDataURL("image/jpeg", quality)
-
-        const jpgImage = await newPdf.embedJpg(imgData)
-
-        const pageNew = newPdf.addPage([
-          jpgImage.width,
-          jpgImage.height
-        ])
-
-        pageNew.drawImage(jpgImage, {
-          x: 0,
-          y: 0,
-          width: jpgImage.width,
-          height: jpgImage.height
-        })
-
-        // 🔥 FREE MEMORY
-        canvas.width = 0
-        canvas.height = 0
-
-        setProgress(Math.round((i / pdf.numPages) * 100))
+      if (selectedMode === "local") {
+        const blob = await handleLocal()
+        const url = URL.createObjectURL(blob)
+        setDownloadUrl(url)
+      } else {
+        const url = await handleServer()
+        setDownloadUrl(url)
       }
 
-      const pdfBytes = await newPdf.save()
-      const blob = new Blob([pdfBytes], { type: "application/pdf" })
-
-      setAfterSize(blob.size)
-
-      const url = URL.createObjectURL(blob)
-      setDownloadUrl(url)
       setLoading(false)
 
       await supabase.from("files").insert([
         {
-          user_id: userData.user.id,
+          user_id: data.user.id,
           name: file.name,
           type: "compress-pdf"
         }
@@ -110,98 +135,68 @@ export default function Page() {
 
     } catch (err) {
       console.error(err)
-      alert("Compression failed ❌ (Try smaller file)")
+      alert("Compression failed ❌")
       setLoading(false)
     }
   }
 
   return (
     <main style={layout}>
-      <div style={card}>
-        <h1>Compress PDF</h1>
+      <h1>Compress PDF</h1>
 
-        {/* ✅ SIMPLE UPLOAD */}
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => {
-            const f = e.target.files[0]
-            setFile(f)
-            if (f) setBeforeSize(f.size)
-          }}
-        />
+      <input
+        type="file"
+        accept="application/pdf"
+        onChange={(e) => setFile(e.target.files[0])}
+      />
 
-        <select
-          value={level}
-          onChange={(e) => setLevel(e.target.value)}
-          style={select}
-        >
-          <option value="low">Low (High Quality)</option>
-          <option value="medium">Medium</option>
-          <option value="high">High (Small Size)</option>
-        </select>
+      {/* 🔥 MODE DISPLAY */}
+      {file && (
+        <p style={{ color: "#22c55e" }}>
+          Mode: {getMode() === "local" ? "⚡ Fast" : "🚀 Strong"}
+        </p>
+      )}
 
-        {beforeSize && <p>Before: {formatSize(beforeSize)}</p>}
-
-        {afterSize && (
-          <p style={{ color: "#22c55e" }}>
-            After: {formatSize(afterSize)}
-          </p>
-        )}
-
-        {loading && (
-          <div style={{ width: "100%" }}>
-            <div style={barBg}>
-              <div style={{ ...barFill, width: progress + "%" }} />
-            </div>
-            <p>{progress}%</p>
+      {loading && (
+        <div style={{ width: "80%" }}>
+          <div style={barBg}>
+            <div style={{ ...barFill, width: progress + "%" }} />
           </div>
-        )}
+          <p>{progress}%</p>
+        </div>
+      )}
 
-        <button onClick={handleCompress} style={btn}>
-          {loading ? "Compressing..." : "Compress"}
-        </button>
+      <button onClick={handleCompress} style={btn}>
+        {loading ? "Processing..." : "Compress"}
+      </button>
 
-        {downloadUrl && (
-          <a href={downloadUrl} download="compressed.pdf" style={link}>
-            Download
-          </a>
-        )}
-      </div>
+      {downloadUrl && (
+        <a href={downloadUrl} target="_blank" style={link}>
+          Download
+        </a>
+      )}
     </main>
   )
 }
 
-// 🎨 CLEAN UI
+// 🎨 UI
 
 const layout = {
-  height: "100vh",
   display: "flex",
+  flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
+  height: "100vh",
+  gap: "20px",
   background: "#020617",
   color: "#fff"
 }
 
-const card = {
-  background: "#111",
-  padding: "25px",
-  borderRadius: "12px",
-  width: "90%",
-  maxWidth: "400px",
-  display: "flex",
-  flexDirection: "column",
-  gap: "15px",
-  alignItems: "center"
-}
-
 const btn = {
-  padding: "12px",
+  padding: "12px 20px",
   background: "#22c55e",
   border: "none",
-  borderRadius: "8px",
-  width: "100%",
-  fontWeight: "bold"
+  borderRadius: "8px"
 }
 
 const link = {
@@ -209,21 +204,14 @@ const link = {
   fontWeight: "bold"
 }
 
-const select = {
-  padding: "10px",
-  borderRadius: "8px",
-  width: "100%"
-}
-
 const barBg = {
   width: "100%",
-  height: "8px",
+  height: "10px",
   background: "#333",
   borderRadius: "10px"
 }
 
 const barFill = {
-  height: "8px",
-  background: "#22c55e",
-  borderRadius: "10px"
+  height: "10px",
+  background: "#22c55e"
 }
