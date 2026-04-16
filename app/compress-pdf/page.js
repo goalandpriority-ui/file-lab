@@ -13,17 +13,15 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [downloadUrl, setDownloadUrl] = useState("")
-  const [mode, setMode] = useState("")
 
-  // 🔥 AUTO MODE SELECT
   const getMode = () => {
     if (!file) return
-    if (file.size < 5 * 1024 * 1024) return "local"
+    if (file.size < 3 * 1024 * 1024) return "local" // 🔥 stricter
     return "server"
   }
 
   // =========================
-  // ⚡ LOCAL COMPRESS
+  // ⚡ LOCAL (STRONGER)
   // =========================
   const handleLocal = async () => {
     const bytes = await file.arrayBuffer()
@@ -34,7 +32,8 @@ export default function Page() {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i)
 
-      const viewport = page.getViewport({ scale: 0.8 })
+      // 🔥 LOWER SCALE
+      const viewport = page.getViewport({ scale: 0.6 })
 
       const canvas = document.createElement("canvas")
       const ctx = canvas.getContext("2d")
@@ -44,7 +43,9 @@ export default function Page() {
 
       await page.render({ canvasContext: ctx, viewport }).promise
 
-      const img = canvas.toDataURL("image/jpeg", 0.6)
+      // 🔥 STRONG COMPRESSION
+      const img = canvas.toDataURL("image/jpeg", 0.4)
+
       const jpg = await newPdf.embedJpg(img)
 
       const p = newPdf.addPage([jpg.width, jpg.height])
@@ -64,7 +65,7 @@ export default function Page() {
   }
 
   // =========================
-  // 🚀 SERVER COMPRESS
+  // 🚀 SERVER (REAL)
   // =========================
   const handleServer = async () => {
     const res = await fetch("/api/compress?level=high", {
@@ -81,10 +82,15 @@ export default function Page() {
 
     await fetch(uploadUrl, { method: "POST", body: form })
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const interval = setInterval(async () => {
         const res = await fetch(`/api/status?jobId=${jobId}`)
         const data = await res.json()
+
+        if (data.error) {
+          clearInterval(interval)
+          reject("Compression failed")
+        }
 
         if (data.done) {
           clearInterval(interval)
@@ -95,7 +101,7 @@ export default function Page() {
   }
 
   // =========================
-  // 🔥 MAIN HANDLER
+  // 🔥 MAIN
   // =========================
   const handleCompress = async () => {
     if (!file) return alert("Select PDF")
@@ -107,14 +113,14 @@ export default function Page() {
       return
     }
 
-    const selectedMode = getMode()
-    setMode(selectedMode)
+    const mode = getMode()
+
     setLoading(true)
     setProgress(0)
     setDownloadUrl("")
 
     try {
-      if (selectedMode === "local") {
+      if (mode === "local") {
         const blob = await handleLocal()
         const url = URL.createObjectURL(blob)
         setDownloadUrl(url)
@@ -150,10 +156,9 @@ export default function Page() {
         onChange={(e) => setFile(e.target.files[0])}
       />
 
-      {/* 🔥 MODE DISPLAY */}
       {file && (
         <p style={{ color: "#22c55e" }}>
-          Mode: {getMode() === "local" ? "⚡ Fast" : "🚀 Strong"}
+          Mode: {getMode() === "local" ? "Fast" : "Strong"}
         </p>
       )}
 
@@ -179,8 +184,7 @@ export default function Page() {
   )
 }
 
-// 🎨 UI
-
+// UI
 const layout = {
   display: "flex",
   flexDirection: "column",
