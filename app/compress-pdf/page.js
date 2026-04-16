@@ -2,7 +2,11 @@
 
 import { useState } from "react"
 import { PDFDocument } from "pdf-lib"
+import * as pdfjsLib from "pdfjs-dist"
 import { supabase } from "@/lib/supabase"
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js"
 
 export default function Page() {
   const [file, setFile] = useState(null)
@@ -11,52 +15,17 @@ export default function Page() {
   const [downloadUrl, setDownloadUrl] = useState("")
   const [level, setLevel] = useState("medium")
 
-  // 🔥 FORMAT SIZE
-  const formatSize = (bytes) => {
-    const mb = bytes / (1024 * 1024)
-    return mb.toFixed(2) + " MB"
+  // 🔥 QUALITY SETTINGS
+  const getQuality = () => {
+    if (level === "low") return 1.0       // high quality
+    if (level === "medium") return 0.7    // balanced
+    if (level === "high") return 0.4      // strong compress
   }
 
-  // 🔥 LOCAL COMPRESSION (MAIN MAGIC)
-  const compressLocal = async (file) => {
-    const bytes = await file.arrayBuffer()
-    const pdf = await PDFDocument.load(bytes)
-
-    const newPdf = await PDFDocument.create()
-    const pages = await newPdf.copyPages(pdf, pdf.getPageIndices())
-
-    let qualityScale = 1
-
-    if (level === "low") qualityScale = 1      // high quality
-    if (level === "medium") qualityScale = 0.7 // balanced
-    if (level === "high") qualityScale = 0.4   // aggressive
-
-    // 🔥 PARALLEL PROCESSING
-    await Promise.all(
-      pages.map(async (p, i) => {
-        newPdf.addPage(p)
-
-        // fake optimization simulation
-        await new Promise(r => setTimeout(r, 50))
-
-        setProgress(Math.round(((i + 1) / pages.length) * 100))
-      })
-    )
-
-    const compressedBytes = await newPdf.save({
-      useObjectStreams: true,
-      compress: true
-    })
-
-    return compressedBytes
-  }
-
-  // 🔥 MAIN FUNCTION
-  const handleConvert = async () => {
+  const handleCompress = async () => {
     if (!file) return alert("Select PDF 😤")
 
     const { data: userData } = await supabase.auth.getUser()
-
     if (!userData?.user) {
       alert("Login required 🔐")
       window.location.href = "/login"
@@ -68,17 +37,54 @@ export default function Page() {
     setDownloadUrl("")
 
     try {
-      // 🔥 SMALL FILE SKIP
-      if (file.size < 500 * 1024) {
-        alert("Already optimized 😅")
-        setLoading(false)
-        return
+      const bytes = await file.arrayBuffer()
+
+      // 🔥 LOAD PDF VIA PDF.JS
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
+
+      const newPdf = await PDFDocument.create()
+      const quality = getQuality()
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+
+        const viewport = page.getViewport({ scale: 1.5 })
+
+        const canvas = document.createElement("canvas")
+        const context = canvas.getContext("2d")
+
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+
+        await page.render({
+          canvasContext: context,
+          viewport
+        }).promise
+
+        // 🔥 IMAGE COMPRESSION
+        const imgData = canvas.toDataURL("image/jpeg", quality)
+
+        const jpgImage = await newPdf.embedJpg(imgData)
+
+        const pageNew = newPdf.addPage([
+          jpgImage.width,
+          jpgImage.height
+        ])
+
+        pageNew.drawImage(jpgImage, {
+          x: 0,
+          y: 0,
+          width: jpgImage.width,
+          height: jpgImage.height
+        })
+
+        // 🔥 PROGRESS
+        setProgress(Math.round((i / pdf.numPages) * 100))
       }
 
-      // 🔥 LOCAL COMPRESSION
-      const compressed = await compressLocal(file)
+      const pdfBytes = await newPdf.save()
 
-      const blob = new Blob([compressed], { type: "application/pdf" })
+      const blob = new Blob([pdfBytes], { type: "application/pdf" })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)
@@ -94,14 +100,14 @@ export default function Page() {
 
     } catch (err) {
       console.error(err)
-      setLoading(false)
       alert("Error ❌")
+      setLoading(false)
     }
   }
 
   return (
     <main style={layout}>
-      <h1>Compress PDF 🔥</h1>
+      <h1>Strong Compress PDF 🔥</h1>
 
       <input
         type="file"
@@ -116,21 +122,21 @@ export default function Page() {
       >
         <option value="low">Low (High Quality)</option>
         <option value="medium">Medium (Balanced)</option>
-        <option value="high">High (Small Size)</option>
+        <option value="high">High (Small Size 🔥)</option>
       </select>
 
-      {/* 🔥 PROGRESS BAR */}
+      {/* 🔥 PROGRESS */}
       {loading && (
         <div style={{ width: "80%" }}>
-          <div style={progressBarBg}>
-            <div style={{ ...progressBarFill, width: progress + "%" }} />
+          <div style={barBg}>
+            <div style={{ ...barFill, width: progress + "%" }} />
           </div>
           <p>{progress}%</p>
         </div>
       )}
 
-      <button onClick={handleConvert} disabled={loading} style={btn}>
-        {loading ? "Compressing..." : "Compress"}
+      <button onClick={handleCompress} style={btn}>
+        {loading ? "Compressing..." : "Strong Compress 🔥"}
       </button>
 
       {downloadUrl && (
@@ -173,15 +179,15 @@ const select = {
   borderRadius: "8px"
 }
 
-const progressBarBg = {
+const barBg = {
   width: "100%",
   height: "10px",
   background: "#333",
   borderRadius: "10px"
 }
 
-const progressBarFill = {
+const barFill = {
   height: "10px",
   background: "#22c55e",
   borderRadius: "10px"
-}
+        }
