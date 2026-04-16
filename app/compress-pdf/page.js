@@ -16,12 +16,12 @@ export default function Page() {
 
   const getMode = () => {
     if (!file) return
-    if (file.size < 3 * 1024 * 1024) return "local" // 🔥 stricter
+    if (file.size < 3 * 1024 * 1024) return "local"
     return "server"
   }
 
   // =========================
-  // ⚡ LOCAL (STRONGER)
+  // ⚡ LOCAL
   // =========================
   const handleLocal = async () => {
     const bytes = await file.arrayBuffer()
@@ -32,7 +32,6 @@ export default function Page() {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i)
 
-      // 🔥 LOWER SCALE
       const viewport = page.getViewport({ scale: 0.6 })
 
       const canvas = document.createElement("canvas")
@@ -43,7 +42,6 @@ export default function Page() {
 
       await page.render({ canvasContext: ctx, viewport }).promise
 
-      // 🔥 STRONG COMPRESSION
       const img = canvas.toDataURL("image/jpeg", 0.4)
 
       const jpg = await newPdf.embedJpg(img)
@@ -65,10 +63,10 @@ export default function Page() {
   }
 
   // =========================
-  // 🚀 SERVER (REAL)
+  // 🚀 SERVER
   // =========================
   const handleServer = async () => {
-    const res = await fetch("/api/compress?level=high", {
+    const res = await fetch("/api/compress", {
       method: "POST"
     })
 
@@ -83,11 +81,15 @@ export default function Page() {
     await fetch(uploadUrl, { method: "POST", body: form })
 
     return new Promise((resolve, reject) => {
+      let tries = 0
+
       const interval = setInterval(async () => {
+        tries++
+
         const res = await fetch(`/api/status?jobId=${jobId}`)
         const data = await res.json()
 
-        if (data.error) {
+        if (data.error || tries > 30) {
           clearInterval(interval)
           reject("Compression failed")
         }
@@ -184,7 +186,6 @@ export default function Page() {
   )
 }
 
-// UI
 const layout = {
   display: "flex",
   flexDirection: "column",
